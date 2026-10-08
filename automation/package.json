@@ -7,6 +7,8 @@
     "test:ui": "node scripts/run.mjs",
     "plan": "node scripts/run.mjs --list",
     "report": "playwright show-report",
+    "report:zh": "node scripts/report-zh.mjs",
+    "test:report": "node --test reporting/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

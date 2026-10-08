@@ -14,6 +14,7 @@ import {
   readFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
+import { writeChineseReports } from "./reporting/chinese-report.mjs";
 
 export default class Results implements Reporter {
   dir = "";
@@ -195,5 +196,10 @@ export default class Results implements Reporter {
         2,
       ),
     );
+  }
+
+  async onExit() {
+    // 等所有报告器完成 onEnd，HTML 与 trace 入口此时也已就绪。
+    writeChineseReports(this.dir);
   }
 }

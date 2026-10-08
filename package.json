@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "test:ui": "node automation/scripts/run.mjs",
-    "ui:plan": "node automation/scripts/run.mjs --list"
+    "ui:plan": "node automation/scripts/run.mjs --list",
+    "ui:report:zh": "node automation/scripts/report-zh.mjs"
   }
 }

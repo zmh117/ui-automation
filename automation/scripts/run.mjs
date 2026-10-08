@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -66,6 +66,10 @@ child.on("close", (code, signal) => {
   for (const [name, handler] of Object.entries(handlers))
     process.off(name, handler);
   process.exitCode = code ?? (signal === "SIGINT" ? 130 : 1);
+  for (const name of ["中文测试报告.md", "中文失败报告.md"]) {
+    const file = resolve(runDir, name);
+    if (existsSync(file)) console.log(`中文报告：${file}`);
+  }
   console.log(
     `查看报告：npx playwright show-report "${resolve(runDir, "html")}"`,
   );
