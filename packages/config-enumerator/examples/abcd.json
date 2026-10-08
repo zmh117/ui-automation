@@ -1,0 +1,24 @@
+{
+  "id": "checkbox-linkage",
+  "version": "1",
+  "fields": [
+    { "id": "A", "label": "选项 A", "values": [false, true] },
+    { "id": "B", "label": "选项 B", "values": [false, true] },
+    { "id": "C", "label": "选项 C", "values": [false, true] },
+    { "id": "D", "label": "选项 D", "values": [false, true] }
+  ],
+  "rules": [
+    {
+      "id": "A_B_EXCLUSIVE",
+      "message": "A 和 B 不能同时选中",
+      "when": { "op": "eq", "field": "A", "value": true },
+      "assert": { "op": "eq", "field": "B", "value": false }
+    },
+    {
+      "id": "C_REQUIRES_D",
+      "message": "选中 C 时必须选中 D",
+      "when": { "op": "eq", "field": "C", "value": true },
+      "assert": { "op": "eq", "field": "D", "value": true }
+    }
+  ]
+}

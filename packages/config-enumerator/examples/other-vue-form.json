@@ -1,0 +1,24 @@
+{
+  "id": "other-vue-form",
+  "version": "1",
+  "fields": [
+    { "id": "mode", "label": "设定方式", "values": ["auto", "manual"] },
+    { "id": "quantity", "label": "数量", "values": [0, 1, 10] },
+    { "id": "checks", "label": "多选检查项", "values": [[], ["record"], ["sign"], ["record", "sign"]] },
+    { "id": "scheduledAt", "label": "计划时间", "values": [null, "2026-10-06 08:00:00"] }
+  ],
+  "rules": [
+    {
+      "id": "MANUAL_POSITIVE",
+      "message": "手动模式数量必须大于 0",
+      "when": { "op": "eq", "field": "mode", "value": "manual" },
+      "assert": { "op": "gt", "field": "quantity", "value": 0 }
+    },
+    {
+      "id": "SIGN_REQUIRES_RECORD",
+      "message": "选择签名时必须同时选择记录",
+      "when": { "op": "includes", "field": "checks", "value": "sign" },
+      "assert": { "op": "includes", "field": "checks", "value": "record" }
+    }
+  ]
+}

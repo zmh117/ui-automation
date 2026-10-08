@@ -1,0 +1,34 @@
+# 依赖与构建产物
+node_modules/
+dist/
+*.tsbuildinfo
+*.tgz
+
+# 测试运行产物
+test-results/
+playwright-report/
+blob-report/
+coverage/
+*.log
+
+# playwright-cli 交互调试产生的页面快照与控制台日志
+.playwright-cli/
+
+# 根目录 output：只保留 VERIFICATION.md 引用的验证截图
+output/*
+!output/playwright/
+
+# 本地环境与登录态（可能含账号、Cookie、Token）
+.env
+.env.*
+!.env.example
+*.local
+.auth/
+storageState*.json
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

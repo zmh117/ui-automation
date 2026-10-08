@@ -1,0 +1,34 @@
+{
+  "id": "mes-playground-observation",
+  "limits": { "maxSnapshots": 40, "maxControls": 300, "maxOptions": 100, "maxTextLength": 500, "timeoutMs": 5000 },
+  "scenes": [
+    { "id": "inputs", "url": "http://127.0.0.1:5173/#/inputs", "readySelector": "[data-testid=config-name]", "steps": [] },
+    { "id": "linkage", "url": "http://127.0.0.1:5173/#/linkage", "readySelector": "[data-testid=checkbox-a]", "steps": [] },
+    { "id": "extended", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "[data-testid=priority-select]", "steps": [] },
+    { "id": "priority-options", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "[data-testid=priority-select]", "steps": [
+      { "kind": "open-dropdown", "selector": "[data-testid=priority-select]", "expectSelector": "[role=listbox]" }
+    ] },
+    { "id": "tag-options", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "[data-testid=feature-tags]", "steps": [
+      { "kind": "open-dropdown", "selector": "[data-testid=feature-tags]", "expectSelector": ".feature-tags-dropdown [role=listbox]" }
+    ] },
+    { "id": "workshop-options", "url": "http://127.0.0.1:5173/#/extended", "readySelector": ".el-cascader", "steps": [
+      { "kind": "open-dropdown", "selector": ".el-cascader", "expectSelector": ".el-cascader__dropdown" }
+    ] },
+    { "id": "datetime-panel", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "#planned-datetime", "steps": [
+      { "kind": "open-dropdown", "selector": "#planned-datetime", "expectSelector": ".planned-datetime-dropdown" }
+    ] },
+    { "id": "dialog-basic", "url": "http://127.0.0.1:5173/#/dialogs", "readySelector": "[data-testid=open-config-dialog]", "steps": [
+      { "kind": "open-dialog", "selector": "[data-testid=open-config-dialog]", "expectSelector": "[data-testid=control-dialog]" }
+    ] },
+    { "id": "dialog-display", "url": "http://127.0.0.1:5173/#/dialogs", "readySelector": "[data-testid=open-config-dialog]", "steps": [
+      { "kind": "open-dialog", "selector": "[data-testid=open-config-dialog]", "expectSelector": "[data-testid=control-dialog]" },
+      { "kind": "activate-tab", "selector": "[role=tab][id$=-display]", "expectSelector": "[data-testid=display-precision]" }
+    ] },
+    { "id": "dialog-variable-entry", "url": "http://127.0.0.1:5173/#/dialogs", "readySelector": "[data-testid=open-config-dialog]", "steps": [
+      { "kind": "open-dialog", "selector": "[data-testid=open-config-dialog]", "expectSelector": "[data-testid=control-dialog]" },
+      { "kind": "open-dialog", "selector": "[data-testid=choose-variable]", "expectSelector": "[data-testid=variable-dialog]" }
+    ] },
+    { "id": "table", "url": "http://127.0.0.1:5173/#/table", "readySelector": "[data-testid=material-search]", "steps": [] },
+    { "id": "all", "url": "http://127.0.0.1:5173/#/all", "readySelector": "body:has([data-testid=config-name]):has([data-testid=checkbox-a]):has([data-testid=material-search]):has([data-testid=open-config-dialog]):has(#planned-datetime)", "steps": [] }
+  ]
+}

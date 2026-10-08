@@ -1,0 +1,20 @@
+{
+  "name": "mes-playground-ui-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:ui": "node scripts/run.mjs",
+    "plan": "node scripts/run.mjs --list",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mes-ui/config-enumerator": "file:../packages/config-enumerator"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "typescript": "5.9.3",
+    "@types/node": "22.14.0"
+  }
+}
