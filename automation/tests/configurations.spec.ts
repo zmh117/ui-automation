@@ -9,6 +9,7 @@ import {
   type Region,
 } from "../pages/lab";
 import type { ConfigurationCase } from "@mes-ui/config-enumerator";
+import { selectCandidates } from "../smoke/selection.mjs";
 
 for (const mode of modes) {
   function cases(
@@ -16,7 +17,7 @@ for (const mode of modes) {
     candidates: ConfigurationCase[],
     run: (lab: Lab, v: any, c: ConfigurationCase) => Promise<void>,
   ) {
-    for (const c of candidates)
+    for (const c of selectCandidates(candidates))
       test(
         `${mode} ${c.id} ${c.classification}`,
         metadata(

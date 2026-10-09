@@ -173,20 +173,23 @@ function facts(data) {
     for (const [key, actual] of Object.entries({ planned, ...counts }))
       if (summary[key] !== actual) warnings.push(`汇总中的 ${statuses[key] ?? "计划"} 数量为 ${summary[key]}，逐条证据为 ${actual}；以下以逐条证据为准。`);
   }
+  const smoke = summary?.smoke ?? plan.smoke;
+  if (smoke && !smoke.verified) warnings.push("冒烟选例未通过覆盖核验，不能认定冒烟完成。");
   const planOnly = summary?.mode === "plan" || invocation?.mode === "plan";
   const complete = !planOnly && !!summary?.complete && !warnings.length && planned > 0 &&
     !counts.notRun && !counts.skipped && !counts.interrupted && !summary?.errors?.length && !["interrupted", "timedout"].includes(summary?.status);
   const scope = summary?.scope ?? "unknown";
-  const full = complete && scope === "full-confirmed-catalog" && summary?.coverageComplete === true;
+  const full = complete && !smoke && scope === "full-confirmed-catalog" && summary?.coverageComplete === true;
+  const smokeComplete = complete && scope === "smoke-confirmed-catalog" && !!smoke?.verified && summary?.smokeComplete === true && planned === smoke.planned;
   const allPassed = complete && counts.passed === planned && summary?.status === "passed";
   let conclusion = planOnly ? "本次仅生成执行计划，没有操作页面，也没有通过或失败结论。"
     : warnings.length ? "执行证据不完整或存在不一致，不能认定本次验证完成。"
       : !complete ? "本次运行未完成，不能作为完整覆盖的验收结果。"
-        : allPassed ? full ? "本次已执行完整确认目录，全部通过。" : "本次所选用例全部通过；这不代表完整确认目录已验证。"
+        : allPassed ? full ? "本次已执行完整确认目录，全部通过。" : smokeComplete ? "本次冒烟清单全部通过；不代表全量配置已验证。" : "本次所选用例全部通过；这不代表完整确认目录已验证。"
           : `本次所选用例已执行结束，存在 ${counts.failed} 条失败、${counts.timedOut} 条超时。`;
-  return { items, counts, planned, warnings, planOnly, scope, complete, full, allPassed, conclusion };
+  return { items, counts, planned, warnings, planOnly, scope, complete, full, smoke, smokeComplete, allPassed, conclusion };
 }
-const scopeNames = { "full-confirmed-catalog": "完整确认目录（分组全量 + 明确操作场景）", filtered: "筛选后的用例范围", "direct-unverified-selection": "直接运行，未确认是否选择完整目录", unknown: "范围信息缺失" };
+const scopeNames = { "full-confirmed-catalog": "完整确认目录（分组全量 + 明确操作场景）", "smoke-confirmed-catalog": "PICT 冒烟（组内合法 n-way + 非法代表/边界 + 操作场景）", filtered: "筛选后的用例范围", "direct-unverified-selection": "直接运行，未确认是否选择完整目录", unknown: "范围信息缺失" };
 function timestamp(value) {
   if (!value || Number.isNaN(Date.parse(value))) return "未记录";
   return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", dateStyle: "medium", timeStyle: "medium", hour12: false }).format(new Date(value)) + "（北京时间）";
@@ -215,12 +218,17 @@ export function renderChineseReports(data, dir) {
   const counts = table(["计划", ...Object.values(statuses)], [[f.planned, ...Object.keys(statuses).map((s) => f.counts[s])]]);
   const warnings = f.warnings.length ? `证据提醒：\n\n${f.warnings.map((w) => `- ${markdown(w)}`).join("\n")}` : "";
   const globalErrors = summary?.errors?.length ? `### 运行级错误\n\n${details("展开原始运行错误", fence(summary.errors.join("\n\n")))}` : "";
+  const smokeInfo = f.smoke ? [
+    `**冒烟强度：${f.smoke.requestedWay}-way**。完整候选目录 ${f.smoke.fullPlanned} 次执行，冒烟清单 ${f.smoke.planned} 次；本次实际选择 ${f.planned} 次。`,
+    `配置候选：${f.smoke.selectedValid} 个合法、${f.smoke.selectedInvalid} 个非法；保留 ${f.smoke.behaviorExecutions} 条操作场景。组内不足 N 个字段时使用全部字段的强度。`,
+    `选例覆盖核验：${f.smoke.verified ? "已通过" : "未通过"}；整个冒烟执行完成：${f.smokeComplete ? "是" : "否"}。选例覆盖是输入组合的静态核验，不等于页面断言通过，也不等于全量回归完成。`,
+  ].join("\n\n") : "";
   const intro = [
     `**${f.conclusion}**`, counts,
     `运行目录：${markdown(basename(dir))}。范围：${scopeNames[f.scope] ?? markdown(f.scope)}。模型版本：${markdown(data.plan.modelVersion ?? "未记录")}。`,
     `开始：${timestamp(invocation?.startedAt)}；结束：${timestamp(summary?.finishedAt)}。`,
     "“非法配置”指输入目标不符合规则；测试通过表示页面按预期拒绝或修正它。中断、跳过和未执行不等于产品缺陷。",
-    warnings, globalErrors,
+    smokeInfo, warnings, globalErrors,
   ].filter(Boolean).join("\n\n");
   const issues = f.items.filter((c) => c.result && c.result.status !== "passed");
   const issueTable = issues.length ? table(["编号", "页面", "场景", "结果"], issues.map((c, i) => [
@@ -237,11 +245,13 @@ export function renderChineseReports(data, dir) {
     const c = countsFor(items);
     return [markdown(pageName(items[0].meta.route)), markdown(describeCase(items[0].meta).title), items.length, ...Object.keys(statuses).map((s) => c[s])];
   }));
-  const files = ["plan.json", "results.jsonl", "summary.json", "invocation.json", "html/index.html"]
+  const reviewLink = existsSync(resolve(dir, "冒烟选例说明.md")) ? link("冒烟选例说明", "冒烟选例说明.md") : "本次主运行目录内的冒烟选例说明";
+  const smokeCoverage = f.smoke ? `## 冒烟分组覆盖\n\n${table(["组", "实际强度", "PICT 合法行", "补充后候选", "可行元组", "已覆盖"], (f.smoke.groups ?? []).map((g) => [markdown(g.id), g.effectiveWay, g.pictRows, g.selected, g.requiredTuples, g.coveredTuples]))}\n\n详细候选值、负向规则和选中原因见${reviewLink}。\n\n` : "";
+  const files = ["plan.json", "results.jsonl", "summary.json", "invocation.json", "smoke.json", "冒烟选例说明.md", "html/index.html"]
     .filter((p) => existsSync(resolve(dir, p))).map((p) => link(p === "html/index.html" ? "Playwright HTML 报告（含截图与 trace 入口）" : p, p)).join(" · ");
   const source = `由已确认场景说明和本次执行证据生成，不调用 Agent 或大模型。场景说明帮助理解，实际判定以测试断言为准。原始记录保持不变。\n\n${files}\n\nHTML 报告建议在 automation 目录使用 npx playwright show-report 打开；参数为本次运行目录下的 html 文件夹。`;
   return {
-    summary: `# 中文测试报告\n\n${intro}\n\n## 需要关注的用例\n\n${issueTable}\n\n${link("打开中文失败报告", reportNames[1])}\n\n## 按页面与场景汇总\n\n${groups}\n\n未执行的具体用例可按 plan.json 与 results.jsonl 中的执行标识对应查找；不将未执行项展开为失败。\n\n## 报告依据\n\n${source}\n`,
+    summary: `# 中文测试报告\n\n${intro}\n\n## 需要关注的用例\n\n${issueTable}\n\n${link("打开中文失败报告", reportNames[1])}\n\n${smokeCoverage}## 按页面与场景汇总\n\n${groups}\n\n未执行的具体用例可按 plan.json 与 results.jsonl 中的执行标识对应查找；不将未执行项展开为失败。\n\n## 报告依据\n\n${source}\n`,
     failures: `# 中文失败报告\n\n${intro}\n\n${link("返回中文测试报告", reportNames[0])}\n\n${issues.length ? issues.map((c, i) => failedCase(dir, c, i + 1)).join("\n\n---\n\n") : issueTable}\n\n## 报告依据\n\n${source}\n`,
     facts: f,
   };

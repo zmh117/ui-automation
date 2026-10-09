@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { resolve } from "node:path";
 import { writeChineseReports } from "./reporting/chinese-report.mjs";
+import { readSmokeSelection, smokeOverview, verifyExecutionSelection } from "./smoke/selection.mjs";
 
 export default class Results implements Reporter {
   dir = "";
@@ -24,6 +25,7 @@ export default class Results implements Reporter {
   planOnly = false;
   filtered = false;
   direct = false;
+  smoke: ReturnType<typeof readSmokeSelection> = null;
   meta(t: TestCase) {
     return t.annotations
       .filter((a) => a.type === "case")
@@ -52,21 +54,27 @@ export default class Results implements Reporter {
         grep.some((pattern) => pattern.source !== ".*"),
     );
     this.tests = suite.allTests();
+    this.smoke = readSmokeSelection();
+    const cases = this.tests.map((t) => ({
+      id: t.id, title: t.titlePath(),
+      metadata: t.annotations.filter((a) => a.type === "case").map((a) => JSON.parse(a.description!)),
+    }));
+    try {
+      verifyExecutionSelection(this.smoke, cases, this.filtered || this.direct);
+    } catch (error) {
+      this.errors.push((error as Error).message);
+      throw error;
+    }
     writeFileSync(
       resolve(this.dir, "plan.json"),
       JSON.stringify(
         {
           schemaVersion: 1,
           modelVersion: "2026-10-07.1",
-          coverage: "group-exhaustive-and-explicit-behaviors",
+          coverage: this.smoke ? "group-nway-with-negatives-and-behaviors" : "group-exhaustive-and-explicit-behaviors",
+          smoke: smokeOverview(this.smoke),
           planned: this.tests.length,
-          cases: this.tests.map((t) => ({
-            id: t.id,
-            title: t.titlePath(),
-            metadata: t.annotations
-              .filter((a) => a.type === "case")
-              .map((a) => JSON.parse(a.description!)),
-          })),
+          cases,
         },
         null,
         2,
@@ -164,7 +172,8 @@ export default class Results implements Reporter {
             ? "direct-unverified-selection"
             : this.filtered
               ? "filtered"
-              : "full-confirmed-catalog",
+              : this.smoke ? "smoke-confirmed-catalog" : "full-confirmed-catalog",
+          smoke: smokeOverview(this.smoke),
           status: result.status,
           planned: this.tests.length,
           uniqueCandidates: new Set(
@@ -185,7 +194,8 @@ export default class Results implements Reporter {
             counts.interrupted,
           ...counts,
           complete,
-          coverageComplete: complete && !this.filtered && !this.direct,
+          coverageComplete: complete && !this.filtered && !this.direct && !this.smoke,
+          smokeComplete: complete && !this.filtered && !this.direct && Boolean(this.smoke) && this.tests.length === this.smoke.planned,
           allPassed: complete && counts.passed === this.tests.length,
           errors: this.errors,
           groups,

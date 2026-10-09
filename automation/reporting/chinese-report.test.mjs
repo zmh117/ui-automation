@@ -55,6 +55,19 @@ test("通过、筛选、仅计划与非法候选含义分别表达", (t) => {
   assert.match(plan.failures, /仅生成执行计划/);
   assert.equal(plan.facts.allPassed, false);
 });
+test("冒烟完成与全量覆盖分开，过滤和中断不得宣称完整冒烟", (t) => {
+  const smoke = { requestedWay: 3, verified: true, planned: 1, fullPlanned: 2453, selectedValid: 1, selectedInvalid: 0, behaviorExecutions: 0, groups: [] };
+  const d = dataset(["passed"], { smoke, scope: "smoke-confirmed-catalog", smokeComplete: true, coverageComplete: false });
+  const out = renderChineseReports(d, temp(t));
+  assert.equal(out.facts.full, false);
+  assert.equal(out.facts.smokeComplete, true);
+  assert.match(out.summary, /本次冒烟清单全部通过/);
+  assert.match(out.summary, /3-way/);
+  d.summary.scope = "filtered";
+  assert.equal(renderChineseReports(d, temp(t)).facts.smokeComplete, false);
+  const interrupted = dataset(["interrupted"], { smoke, scope: "smoke-confirmed-catalog", smokeComplete: false });
+  assert.equal(renderChineseReports(interrupted, temp(t)).facts.smokeComplete, false);
+});
 test("缺失汇总或不一致时不根据通过数夸大结论", (t) => {
   const dir = temp(t), d = dataset(["passed"]);
   d.summary = null;

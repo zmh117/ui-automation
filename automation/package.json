@@ -9,6 +9,10 @@
     "report": "playwright show-report",
     "report:zh": "node scripts/report-zh.mjs",
     "test:report": "node --test reporting/*.test.mjs",
+    "test:smoke": "node --test smoke/*.test.mjs",
+    "pict:install": "node scripts/install-pict.mjs",
+    "smoke:plan": "node scripts/run.mjs --suite smoke --list",
+    "test:ui:smoke": "node scripts/run.mjs --suite smoke",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
