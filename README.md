@@ -5,7 +5,7 @@
 - [页面自动发现：指定入口、模型确认与真实项目测试](packages/config-enumerator/DISCOVERY.md)：用 Playwright 扫描 DOM、Frame 和开放 Shadow，关联外置弹框，记录选项完整性与单元格显示；仅展开指定入口，不保存配置。
 - [六页 UI 自动执行：用例、命令与结果报告](automation/README.md)：使用已确认的分组全量模型实际操作页面，包含非法输入、保存刷新和失败证据。
 - [本地验收记录](playground/VERIFICATION.md)：构建及浏览器验证范围、截图和限制。
-- [MES UI 自动化测试方案](MES_UI自动化测试方案.md)：现有整体设计。
+- [MES UI 自动化测试方案](doc/MES_UI自动化测试方案.md)：现有整体设计。
 
 ## 启动前端
 
