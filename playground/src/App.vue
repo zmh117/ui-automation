@@ -47,9 +47,11 @@ const pages = [
     description: "在同一个页面操作全部控件，完整体验输入、联动、弹框和表格。",
     tags: ["全部控件", "分区保存", "快速定位"],
   },
+  { id: "discovery", title: "发现验证", caption: "弹层、列表与文档边界", description: "观察指定弹框、选项完整性、Frame、Shadow DOM 和单元格显示。", tags: ["跨边界发现", "选项证据", "显示采集"] },
 ];
-const sections = pages.filter((page) => page.id !== "all");
+const sections = pages.filter((page) => !["all", "discovery"].includes(page.id));
 const views: Record<string, ReturnType<typeof defineAsyncComponent>> = {
+  discovery: defineAsyncComponent(() => import("./views/DiscoveryView.vue")),
   inputs: defineAsyncComponent(() => import("./views/InputsView.vue")),
   linkage: defineAsyncComponent(() => import("./views/LinkageView.vue")),
   dialogs: defineAsyncComponent(() => import("./views/DialogsView.vue")),
@@ -171,9 +173,11 @@ async function reset() {
           <div class="tag-list">
             <span v-for="tag in meta.tags" :key="tag">{{ tag }}</span>
           </div>
-          <span class="save-note">手动保存 · 刷新后保留</span>
+          <span class="save-note">{{ active === 'discovery' ? '仅用于发现验证 · 不保存配置' : '手动保存 · 刷新后保留' }}</span>
         </div>
+        <component v-if="active === 'discovery'" :is="views.discovery" />
         <ComponentWorkspace
+          v-show="active !== 'discovery'"
           :key="resetEpoch"
           :active="active"
           :sections="sections"

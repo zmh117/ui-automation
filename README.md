@@ -2,7 +2,7 @@
 
 - [交互配置实验室：启动与页面规则](playground/README.md)：已实现的 Vue 前端被测站，覆盖输入边界、复选框联动、嵌套弹框、扩展控件和动态表格。
 - [全量配置枚举器：运行与跨 Vue 项目接入](packages/config-enumerator/README.md)：独立 TypeScript 包，流式生成全部有限候选，保留合法/非法分类及全部违规原因；当前不执行 UI。
-- [页面自动发现：指定入口、模型确认与真实项目测试](packages/config-enumerator/DISCOVERY.md)：用 Playwright 读取 DOM，生成发现报告和待确认模型；仅展开指定入口，不保存配置。
+- [页面自动发现：指定入口、模型确认与真实项目测试](packages/config-enumerator/DISCOVERY.md)：用 Playwright 扫描 DOM、Frame 和开放 Shadow，关联外置弹框，记录选项完整性与单元格显示；仅展开指定入口，不保存配置。
 - [六页 UI 自动执行：用例、命令与结果报告](automation/README.md)：使用已确认的分组全量模型实际操作页面，包含非法输入、保存刷新和失败证据。
 - [本地验收记录](playground/VERIFICATION.md)：构建及浏览器验证范围、截图和限制。
 - [MES UI 自动化测试方案](MES_UI自动化测试方案.md)：现有整体设计。
@@ -42,6 +42,13 @@ npm run test:discovery
 ```
 
 默认使用本机 Chrome 和隔离上下文。示例计划包含一个禁用的内层变量入口，因此预期发现状态为 `partial`、退出码为 2；已发现内容正常导出。查看 `report.md` 和 `draft-model.json`，再按发现模块文档确认范围、取值和规则。
+
+四类能力的独立实例位于 [发现验证页](http://127.0.0.1:5173/#/discovery)。新版计划和报告使用 `schemaVersion: 2`，旧版需重新生成：
+
+```bash
+# 在 packages/config-enumerator 下执行，输出目录必须未存在
+npm run discover -- --plan examples/discovery-evidence.json --out output/my-evidence
+```
 
 ## 自动执行六页 UI 用例
 

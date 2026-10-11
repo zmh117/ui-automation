@@ -1,34 +1,197 @@
 {
+  "schemaVersion": 2,
   "id": "mes-playground-observation",
-  "limits": { "maxSnapshots": 40, "maxControls": 300, "maxOptions": 100, "maxTextLength": 500, "timeoutMs": 5000 },
+  "limits": {
+    "maxSnapshots": 40,
+    "maxControls": 300,
+    "maxOptions": 100,
+    "maxTextLength": 500,
+    "timeoutMs": 5000
+  },
   "scenes": [
-    { "id": "inputs", "url": "http://127.0.0.1:5173/#/inputs", "readySelector": "[data-testid=config-name]", "steps": [] },
-    { "id": "linkage", "url": "http://127.0.0.1:5173/#/linkage", "readySelector": "[data-testid=checkbox-a]", "steps": [] },
-    { "id": "extended", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "[data-testid=priority-select]", "steps": [] },
-    { "id": "priority-options", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "[data-testid=priority-select]", "steps": [
-      { "kind": "open-dropdown", "selector": "[data-testid=priority-select]", "expectSelector": "[role=listbox]" }
-    ] },
-    { "id": "tag-options", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "[data-testid=feature-tags]", "steps": [
-      { "kind": "open-dropdown", "selector": "[data-testid=feature-tags]", "expectSelector": ".feature-tags-dropdown [role=listbox]" }
-    ] },
-    { "id": "workshop-options", "url": "http://127.0.0.1:5173/#/extended", "readySelector": ".el-cascader", "steps": [
-      { "kind": "open-dropdown", "selector": ".el-cascader", "expectSelector": ".el-cascader__dropdown" }
-    ] },
-    { "id": "datetime-panel", "url": "http://127.0.0.1:5173/#/extended", "readySelector": "#planned-datetime", "steps": [
-      { "kind": "open-dropdown", "selector": "#planned-datetime", "expectSelector": ".planned-datetime-dropdown" }
-    ] },
-    { "id": "dialog-basic", "url": "http://127.0.0.1:5173/#/dialogs", "readySelector": "[data-testid=open-config-dialog]", "steps": [
-      { "kind": "open-dialog", "selector": "[data-testid=open-config-dialog]", "expectSelector": "[data-testid=control-dialog]" }
-    ] },
-    { "id": "dialog-display", "url": "http://127.0.0.1:5173/#/dialogs", "readySelector": "[data-testid=open-config-dialog]", "steps": [
-      { "kind": "open-dialog", "selector": "[data-testid=open-config-dialog]", "expectSelector": "[data-testid=control-dialog]" },
-      { "kind": "activate-tab", "selector": "[role=tab][id$=-display]", "expectSelector": "[data-testid=display-precision]" }
-    ] },
-    { "id": "dialog-variable-entry", "url": "http://127.0.0.1:5173/#/dialogs", "readySelector": "[data-testid=open-config-dialog]", "steps": [
-      { "kind": "open-dialog", "selector": "[data-testid=open-config-dialog]", "expectSelector": "[data-testid=control-dialog]" },
-      { "kind": "open-dialog", "selector": "[data-testid=choose-variable]", "expectSelector": "[data-testid=variable-dialog]" }
-    ] },
-    { "id": "table", "url": "http://127.0.0.1:5173/#/table", "readySelector": "[data-testid=material-search]", "steps": [] },
-    { "id": "all", "url": "http://127.0.0.1:5173/#/all", "readySelector": "body:has([data-testid=config-name]):has([data-testid=checkbox-a]):has([data-testid=material-search]):has([data-testid=open-config-dialog]):has(#planned-datetime)", "steps": [] }
+    {
+      "id": "inputs",
+      "url": "http://127.0.0.1:5173/#/inputs",
+      "steps": [],
+      "ready": {
+        "selector": "[data-testid=config-name]"
+      }
+    },
+    {
+      "id": "linkage",
+      "url": "http://127.0.0.1:5173/#/linkage",
+      "steps": [],
+      "ready": {
+        "selector": "[data-testid=checkbox-a]"
+      }
+    },
+    {
+      "id": "extended",
+      "url": "http://127.0.0.1:5173/#/extended",
+      "steps": [],
+      "ready": {
+        "selector": "[data-testid=priority-select]"
+      }
+    },
+    {
+      "id": "priority-options",
+      "url": "http://127.0.0.1:5173/#/extended",
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=priority-select]"
+          },
+          "expected": {
+            "selector": ".priority-dropdown [role=listbox]"
+          }
+        }
+      ],
+      "ready": {
+        "selector": "[data-testid=priority-select]"
+      }
+    },
+    {
+      "id": "tag-options",
+      "url": "http://127.0.0.1:5173/#/extended",
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=feature-tags]"
+          },
+          "expected": {
+            "selector": ".feature-tags-dropdown [role=listbox]"
+          }
+        }
+      ],
+      "ready": {
+        "selector": "[data-testid=feature-tags]"
+      }
+    },
+    {
+      "id": "workshop-options",
+      "url": "http://127.0.0.1:5173/#/extended",
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": ".el-cascader"
+          },
+          "expected": {
+            "selector": ".el-cascader__dropdown"
+          }
+        }
+      ],
+      "ready": {
+        "selector": ".el-cascader"
+      }
+    },
+    {
+      "id": "datetime-panel",
+      "url": "http://127.0.0.1:5173/#/extended",
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "#planned-datetime"
+          },
+          "expected": {
+            "selector": ".planned-datetime-dropdown"
+          }
+        }
+      ],
+      "ready": {
+        "selector": "#planned-datetime"
+      }
+    },
+    {
+      "id": "dialog-basic",
+      "url": "http://127.0.0.1:5173/#/dialogs",
+      "steps": [
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=open-config-dialog]"
+          },
+          "expected": {
+            "selector": "[role=dialog]:has(> [data-testid=control-dialog])"
+          }
+        }
+      ],
+      "ready": {
+        "selector": "[data-testid=open-config-dialog]"
+      }
+    },
+    {
+      "id": "dialog-display",
+      "url": "http://127.0.0.1:5173/#/dialogs",
+      "steps": [
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=open-config-dialog]"
+          },
+          "expected": {
+            "selector": "[role=dialog]:has(> [data-testid=control-dialog])"
+          }
+        },
+        {
+          "kind": "activate-tab",
+          "target": {
+            "selector": "[role=tab][id$=-display]"
+          },
+          "expected": {
+            "selector": "[data-testid=display-precision]"
+          }
+        }
+      ],
+      "ready": {
+        "selector": "[data-testid=open-config-dialog]"
+      }
+    },
+    {
+      "id": "dialog-variable-entry",
+      "url": "http://127.0.0.1:5173/#/dialogs",
+      "steps": [
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=open-config-dialog]"
+          },
+          "expected": {
+            "selector": "[role=dialog]:has(> [data-testid=control-dialog])"
+          }
+        },
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=choose-variable]"
+          },
+          "expected": {
+            "selector": "[role=dialog]:has(> [data-testid=variable-dialog])"
+          }
+        }
+      ],
+      "ready": {
+        "selector": "[data-testid=open-config-dialog]"
+      }
+    },
+    {
+      "id": "table",
+      "url": "http://127.0.0.1:5173/#/table",
+      "steps": [],
+      "ready": {
+        "selector": "[data-testid=material-search]"
+      }
+    },
+    {
+      "id": "all",
+      "url": "http://127.0.0.1:5173/#/all",
+      "steps": [],
+      "ready": {
+        "selector": "body:has([data-testid=config-name]):has([data-testid=checkbox-a]):has([data-testid=material-search]):has([data-testid=open-config-dialog]):has(#planned-datetime)"
+      }
+    }
   ]
 }

@@ -13,7 +13,7 @@ const plan = JSON.parse(readFileSync(new URL('../../examples/playground-discover
 const abcd = JSON.parse(readFileSync(new URL('../../examples/abcd.json', import.meta.url)));
 const origin = process.env.PLAYGROUND_URL ?? 'http://127.0.0.1:5173/';
 for (const scene of plan.scenes) scene.url = new URL(new URL(scene.url).hash, origin).href;
-const settings = { scopeSelector: 'body', maxControls: 300, maxOptions: 100, maxTextLength: 500 };
+const settings = { scopes: [{ selector: 'body' }], framePath: [], maxCells: 300, maxShadowDepth: 8, maxControls: 300, maxOptions: 100, maxTextLength: 500 };
 let browser, context, page, report, draft, review, storageBefore, storageAfter;
 const writeRequests = [];
 const snapshot = (id) => report.snapshots.find(s => s.id === id);
@@ -25,7 +25,7 @@ before(async () => {
   page = await context.newPage();
   page.on('request', request => { if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writeRequests.push(request.method() + ' ' + request.url()); });
   await page.goto(plan.scenes[0].url);
-  await page.locator(plan.scenes[0].readySelector).waitFor();
+  await page.locator(plan.scenes[0].ready.selector).waitFor();
   storageBefore = await context.storageState();
   report = await discoverPage(page, plan);
   storageAfter = await context.storageState();
@@ -110,11 +110,11 @@ test('日期时间、区间、滑块、文件识别；滑块与数字输入合�
 });
 
 test('每个场景重建文档，弹框/标签路径有证据，未切换到变量模式', () => {
-  for (const id of ['dialog-basic:0', 'dialog-display:0', 'dialog-variable-entry:0']) assert.deepEqual(snapshot(id).visibleDialogs, []);
-  assert.deepEqual(snapshot('dialog-basic:1').visibleDialogs, ['控件设置']);
+  for (const id of ['dialog-basic:0', 'dialog-display:0', 'dialog-variable-entry:0']) assert.deepEqual(snapshot(id).dialogs.map(d => d.label), []);
+  assert.deepEqual(snapshot('dialog-basic:1').dialogs.map(d => d.label), ['控件设置']);
   assert.ok(field('dialog-display:2', 'display-precision'));
   assert.equal(snapshot('dialog-variable-entry:1').controls.find(c => c.kind === 'radio-group').currentValue, 'fixed');
-  assert.ok(!report.snapshots.some(s => s.visibleDialogs.includes('选择数值变量')));
+  assert.ok(!report.snapshots.some(s => s.dialogs.map(d => d.label).includes('选择数值变量')));
 });
 
 test('页面来源 + 已确认规则生成完整 16/9/7；正式模型保留来源映射', async () => {
@@ -165,7 +165,7 @@ test('确认 CLI 导出正式模型和映射，原有输出不覆盖', () => {
 
 test('业务复选框、保存按钮均在点击前拦截，页面数据保持不变', async () => {
   for (const selector of ['[data-testid=checkbox-a]', '[data-testid=linkage-save]']) {
-    const result = await discoverPage(page, { id: 'forbidden', scenes: [{ id: 'guard', url: plan.scenes[1].url, readySelector: '[data-testid=checkbox-a]', steps: [{ kind: 'open-dialog', selector, expectSelector: 'body' }] }] });
+    const result = await discoverPage(page, { schemaVersion: 2, id: 'forbidden', scenes: [{ id: 'guard', url: plan.scenes[1].url, ready: { selector: '[data-testid=checkbox-a]' }, steps: [{ kind: 'open-dialog', target: { selector }, expected: { selector: 'body' } }] }] });
     assert.equal(result.scenes[0].status, 'blocked');
     assert.equal(result.scenes[0].completedSteps, 0);
     assert.equal(await page.locator('[data-testid=checkbox-a]').isChecked(), false);
@@ -181,14 +181,14 @@ test('快照预算、取消与错误定位不会冒充发现完成', async () =>
   const controller = new AbortController(); controller.abort();
   const cancelled = await discoverPage(page, plan, { signal: controller.signal });
   assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.snapshots.length, 0);
-  const broken = await discoverPage(page, { id: 'bad-locator', limits: { timeoutMs: 200 }, scenes: [{ ...plan.scenes[0], readySelector: '#does-not-exist' }] });
+  const broken = await discoverPage(page, { schemaVersion: 2, id: 'bad-locator', limits: { timeoutMs: 200 }, scenes: [{ ...plan.scenes[0], ready: { selector: '#does-not-exist' } }] });
   assert.equal(broken.status, 'partial'); assert.equal(broken.scenes[0].status, 'failed');
 });
 
 test('计划格式拒绝任意动作、重复场景及失效预算', () => {
   assert.throws(() => parseDiscoveryPlan({ ...plan, scenes: [plan.scenes[0], plan.scenes[0]] }), /重复/);
   for (const maxSnapshots of [0, -1, 1.5, 1001]) assert.throws(() => parseDiscoveryPlan({ ...plan, limits: { maxSnapshots } }));
-  assert.throws(() => parseDiscoveryPlan({ id: 'x', scenes: [{ ...plan.scenes[0], steps: [{ kind: 'fill', selector: 'input', expectSelector: 'input' }] }] }), /不允许/);
+  assert.throws(() => parseDiscoveryPlan({ schemaVersion: 2, id: 'x', scenes: [{ ...plan.scenes[0], steps: [{ kind: 'fill', target: { selector: 'input' }, expected: { selector: 'input' } }] }] }), /不允许/);
 });
 
 // 补充原生组件与脱敏边界；主要验收仍是上面的真实 Vue 页面。
@@ -213,10 +213,10 @@ test('原生补充：密码值脱敏、禁用选项、多选当前值、不可�
     assert.deepEqual(select.currentValue, ['a']); assert.equal(select.options[1].disabled, true);
     assert.deepEqual(result.controls.filter(c => c.kind === 'radio-group').map(c => c.currentValue), ['x', 'z', 'a', 'wrapped-a']);
     assert.equal(result.controls.find(c => c.label === '限长').attributes.maxlength, '100');
-    assert.ok(result.warnings.some(w => w.includes('iframe')));
+    assert.equal(result.frames.length, 1);
     assert.equal((await fixture.evaluate(scanDocument, { ...settings, maxControls: 1 })).truncated, true);
     assert.equal((await fixture.evaluate(scanDocument, { ...settings, maxOptions: 1 })).truncated, true);
     assert.equal((await fixture.evaluate(scanDocument, { ...settings, maxTextLength: 2 })).truncated, true);
-    await assert.rejects(fixture.evaluate(scanDocument, { ...settings, scopeSelector: 'form' }), /扫描区域不唯一/);
+    await assert.rejects(fixture.evaluate(scanDocument, { ...settings, scopes: [{ selector: 'form' }] }), /扫描区域不唯一/);
   } finally { await fixture.close(); }
 });

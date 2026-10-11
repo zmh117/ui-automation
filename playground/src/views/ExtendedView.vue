@@ -94,6 +94,7 @@ function restore() {
                 v-model="form.priority"
                 aria-label="处理优先级"
                 data-testid="priority-select"
+                popper-class="priority-dropdown"
                 ><el-option label="常规处理" value="normal" /><el-option
                   label="优先处理"
                   value="high" /><el-option label="紧急处理" value="urgent"

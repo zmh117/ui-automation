@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 2,
+  "id": "discovery-evidence-v2",
+  "limits": {
+    "maxSnapshots": 50,
+    "maxCells": 300,
+    "maxFrames": 20,
+    "timeoutMs": 5000
+  },
+  "scenes": [
+    {
+      "id": "teleport",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"discovery-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"discovery-editor\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=\"open-evidence-dialog\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"evidence-dialog\"]"
+          }
+        },
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=\"open-inner-evidence\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"inner-evidence-dialog\"]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "complete",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"discovery-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"complete-region\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=\"complete-opener\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"complete-list\"]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "paged",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"discovery-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"paged-region\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=\"paged-opener\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"paged-list\"]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "virtual",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"discovery-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"virtual-region\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=\"virtual-opener\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"virtual-list\"]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "unknown",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"discovery-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"unknown-region\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=\"unknown-opener\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"unknown-list\"]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "remote",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"discovery-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"remote-region\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=\"remote-opener\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"remote-list\"]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "remote-ready",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"remote-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"remote-region\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dropdown",
+          "target": {
+            "selector": "[data-testid=\"remote-opener\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"remote-list\"]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "shadow-dialog",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"discovery-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"discovery-editor\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=\"shadow-open\"]",
+            "shadowPath": [
+              "[data-testid=\"open-shadow\"]"
+            ]
+          },
+          "expected": {
+            "selector": "[data-testid=\"shadow-dialog\"]",
+            "shadowPath": [
+              "[data-testid=\"open-shadow\"]"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "frame-dialog",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"frame-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"frame-ready\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=\"frame-open\"]"
+          },
+          "expected": {
+            "selector": "[data-testid=\"frame-dialog\"]"
+          }
+        }
+      ],
+      "framePath": [
+        {
+          "selector": "[data-testid=\"frame-one\"]"
+        }
+      ]
+    },
+    {
+      "id": "frame-shadow",
+      "url": "http://127.0.0.1:5173/#/discovery",
+      "ready": {
+        "selector": "[data-testid=\"frame-ready\"]"
+      },
+      "scope": {
+        "selector": "[data-testid=\"frame-ready\"]"
+      },
+      "steps": [
+        {
+          "kind": "open-dialog",
+          "target": {
+            "selector": "[data-testid=\"shadow-open\"]",
+            "shadowPath": [
+              "[data-testid=\"frame-shadow\"]"
+            ]
+          },
+          "expected": {
+            "selector": "[data-testid=\"shadow-dialog\"]",
+            "shadowPath": [
+              "[data-testid=\"frame-shadow\"]"
+            ]
+          }
+        }
+      ],
+      "framePath": [
+        {
+          "selector": "[data-testid=\"frame-one\"]"
+        }
+      ]
+    }
+  ]
+}
