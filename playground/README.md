@@ -38,7 +38,7 @@ npm run preview
 
 ### 发现验证页
 
-该页独立于原六页的分组用例，进入后原配置草稿保留；离开时清理弹框和加载请求。两层 Teleport 弹框旁有无关同名弹框；选项示例包含完整、分页、虚拟片段、未知总数和 GET 加载。两个兄弟 iframe 使用相同 URL，并包含嵌套 Frame；另有跨源（127.0.0.1 / localhost）Frame、开放嵌套 Shadow、Shadow 内 Frame 和闭合根对照。
+该页使用独立的 6 个配置组和 8 个操作场景，共 212 条分组全量用例，进入后原配置草稿保留；离开时清理弹框和加载请求。可通过根目录 `npm run test:ui -- --scope discovery` 或 `npm run test:ui:smoke -- --scope discovery --way 2` 执行并生成中文报告。两层 Teleport 弹框旁有无关同名弹框；选项示例包含完整、分页、虚拟片段、未知总数和 GET 加载。两个兄弟 iframe 使用相同 URL，并包含嵌套 Frame；另有跨源（127.0.0.1 / localhost）Frame、开放嵌套 Shadow、Shadow 内 Frame 和闭合根对照。
 
 `discovery-frame.html` 是独立 Vue 入口，包含于生产构建；`public/discovery-options.json` 提供本地远程列表样本。单元格同时展示 `12.30 kg` 和显式业务值 12.3，供采集与断言核对。这些是受控验证实例，虚拟示例用切换片段模拟 DOM 仅渲染局部数据，不代表已适配某个第三方虚拟表格。
 

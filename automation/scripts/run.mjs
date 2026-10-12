@@ -9,7 +9,7 @@ import { writeSmokeReview } from "../smoke/review.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2), forward = [];
-let slowMo = "0", suite = "full", way = 2, explicitWay = false, runDir, uiStarted = false;
+let slowMo = "0", suite = "full", catalogScope = "all", way = 2, explicitWay = false, runDir, uiStarted = false;
 const controller = new AbortController();
 let interrupted;
 const handlers = Object.fromEntries(["SIGINT", "SIGTERM"].map((name) => [name, () => {
@@ -25,6 +25,9 @@ try {
     } else if (arg === "--suite") {
       suite = args[++i];
       if (!["full", "smoke"].includes(suite)) throw new Error("--suite 仅支持 full 或 smoke");
+    } else if (arg === "--scope") {
+      catalogScope = args[++i];
+      if (!["all", "discovery"].includes(catalogScope)) throw new Error("--scope 仅支持 all 或 discovery");
     } else if (arg === "--way") {
       way = validateWay(args[++i]); explicitWay = true;
     } else if (["--headed", "--list"].includes(arg)) forward.push(arg);
@@ -38,11 +41,11 @@ try {
   const binary = suite === "smoke" ? resolvePictBinary() : null;
   runDir = resolve(root, "output", new Date().toISOString().replace(/[:.]/g, "-") + "-" + randomUUID().slice(0, 8));
   mkdirSync(runDir, { recursive: true });
-  const invocation = { args, baseURL: process.env.PLAYGROUND_URL ?? "http://127.0.0.1:5173", startedAt: new Date().toISOString(), mode: forward.includes("--list") ? "plan" : "execute", suite, ...(suite === "smoke" ? { way } : {}) };
+  const invocation = { args, baseURL: process.env.PLAYGROUND_URL ?? "http://127.0.0.1:5173", startedAt: new Date().toISOString(), mode: forward.includes("--list") ? "plan" : "execute", suite, catalogScope, ...(suite === "smoke" ? { way } : {}) };
   writeFileSync(resolve(runDir, "invocation.json"), JSON.stringify(invocation, null, 2));
   console.log(`本次报告目录：${runDir}`);
   for (const [name, handler] of Object.entries(handlers)) process.on(name, handler);
-  const env = { ...process.env, MES_RUN_DIR: runDir, MES_SLOW_MO: slowMo };
+  const env = { ...process.env, MES_RUN_DIR: runDir, MES_SLOW_MO: slowMo, MES_TEST_SCOPE: catalogScope };
   delete env.MES_SMOKE_SELECTION;
   const cli = resolve(root, "node_modules/@playwright/test/cli.js");
   if (suite === "smoke") {
@@ -55,7 +58,7 @@ try {
     if (catalog.code !== 0) throw new Error(`读取完整候选目录失败，详见 ${resolve(catalogDir, "runner.log")}`);
     const plan = JSON.parse(readFileSync(resolve(catalogDir, "plan.json"), "utf8"));
     const catalogSummary = JSON.parse(readFileSync(resolve(catalogDir, "summary.json"), "utf8"));
-    if (catalogSummary.scope !== "full-confirmed-catalog" || catalogSummary.errors?.length)
+    if (catalogSummary.scope !== (catalogScope === "all" ? "full-confirmed-catalog" : "page-confirmed-catalog") || catalogSummary.catalogScope !== catalogScope || catalogSummary.errors?.length)
       throw new Error("候选来源被筛选或收集报错，不能作为完整目录生成冒烟");
     console.log(`使用真实 PICT 生成组内 ${way}-way，并独立核验覆盖……`);
     const selection = await createSmokeSelection(plan, { way, binary, directory: runDir, signal: controller.signal });

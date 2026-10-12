@@ -1,9 +1,10 @@
 // 这里只解释已确认的用例，不参与执行或计算断言预期值。
 export const pageNames = {
   inputs: "基础输入", linkage: "联动规则", dialogs: "嵌套弹框",
-  extended: "扩展输入", table: "动态表格", all: "全部组件",
+  extended: "扩展输入", table: "动态表格", all: "全部组件", discovery: "发现验证",
 };
 export const fieldNames = {
+  context: "文档/Shadow 位置", remark: "弹框备注", outerText: "外层名称", innerText: "内层筛选", exit: "退出路径", list: "列表实例", advance: "前进次数", entry: "发现入口", budget: "采集预算",
   name: "名称", count: "数量/行数", weight: "重量", raw: "原始输入",
   a: "复选框 A", b: "复选框 B", c: "复选框 C", d: "复选框 D",
   mode: "数据来源", manual: "手动值", advanced: "启用高级配置", reason: "高级配置原因",
@@ -16,6 +17,8 @@ export const fieldNames = {
   "disabled-device": "禁用的设备输入", "manual-value": "手动值", "advanced-reason": "高级配置原因",
   "material-search": "物料搜索", "add-row": "新增物料按钮", "mark-color": "标记颜色",
   "reminder-time": "提醒时间", "planned-datetime": "计划日期时间", attachment: "附件",
+  "shared-field": "当前文档的共享字段", "native-options": "原生单位选择", "outer-name": "外层弹框名称",
+  "inner-search": "内层弹框筛选", "unrelated-field": "无关弹框字段", "frame-note": "Frame 弹框备注", "shadow-note": "Shadow 弹框备注",
 };
 export function groupId(id = "") { return id.split("@")[0]; }
 export function pageName(route) {
@@ -23,6 +26,12 @@ export function pageName(route) {
 }
 const entry = (title, steps, expected) => ({ known: true, title, steps, expected });
 const groups = {
+  "discovery.inputs": ["发现页原生输入与禁用单位", "填写有限文本样本；kg/g 实际选择；t 读取原生 disabled 与 selected 属性；刷新", "文本完整保留（101 字符不截断）；kg/g 可选，t 禁用且未选中；刷新恢复默认且不持久化。禁用目标核验状态契约，不声明系统原生菜单点击拦截已验证"],
+  "discovery.teleport": ["两层 Teleport 输入与取消", "精确打开外层和内层，填写名称与筛选；按候选路径取消并重开；刷新", "背景 inert；内层取消保留外层，外层取消关闭两层；重开恢复默认，无关同名弹框不变"],
+  "discovery.shadow": ["开放 Shadow 内配置与隔离", "按宿主链进入目标根，填写输入和局部弹框备注；核对其他同名字段并刷新", "只有指定根字段改变，其他 12 个同名字段不变；刷新后字段和备注恢复默认，无保存记录"],
+  "discovery.frames": ["Frame 内配置与隔离", "按 Frame 链进入兄弟、嵌套、跨源或 Shadow 内文档，填写字段和弹框备注；核对隔离并刷新", "精确命中指定文档，其他同名字段保持默认；刷新复位，无保存记录"],
+  "discovery.lists": ["列表窗口、翻页与完整性", "打开指定列表，按目标次数翻页/换段；不支持前进的列表验证按钮不存在；读取选项并刷新", "选项内容及数量匹配固定窗口；分页和虚拟为部分，未知总数为未知，完整/远程就绪为完整；不把展示当作选择或保存"],
+  "discovery.observation": ["发现入口与采集预算组合", "使用指定 Teleport、Shadow 或 Frame 入口和采集预算运行发现并记录 JSON", "正确关联目标弹框，排除无关弹框；发生实际截断时标记部分发现；未触发预算时允许完成，不与 UI 全量通过混淆"],
   "basic.required": ["名称、整数数量与重量的组合校验", "填写名称、整数数量和小数重量；点击保存", "合法输入保存并刷新回显；空名称、数量越界或重量不合法时显示对应错误，原保存值不变"],
   "basic.free": ["自由文本与特殊字符", "填写自由文本并保存、刷新", "文本正确回显；输入框中的换行按规则转为空格"],
   "basic.integerFormat": ["整数输入格式拦截", "先填合法整数 7，再输入候选中的非法格式", "保留原值 7，并提示只允许整数"],
@@ -49,6 +58,14 @@ const groups = {
   "table.quantityBoundary": ["物料数量非法输入", "填写空值、零、负数、超上限或非数字并保存", "空值提示错误且不保存；被控件修正的值须大于 0 且不超过 100000，再核对保存和刷新"],
 };
 const behaviors = {
+  "behavior.discovery.display-evidence": entry("单元格显示与业务值", ["读取原生表格、ARIA grid 及各子 Frame 的显示和业务值"], "显示 12.30 kg 与数值 12.3 分离；隐藏 999 不混入；温度 20.0 °C、Frame 2.50 kg 正确；未声明业务值保持未知"),
+  "behavior.discovery.remote-loading": entry("受控远程加载与真实响应", ["暂缓项目 GET 响应，展开远程列表并检查加载状态", "放行真实请求并等待数据"], "加载中为 partial；响应后 5 项完整，状态及时更新"),
+  "behavior.discovery.remote-error": entry("受控远程请求失败", ["将项目选项 GET 响应替换为测试用 503", "打开远程列表并等待错误提示"], "显示 HTTP 503，没有就绪标志或伪造选项，完整性不能为 complete；此场景为故障模拟"),
+  "behavior.discovery.list-wrap": entry("分页绕回与列表切换", ["分页前进三次绕回首页", "进入第二页，切换其他列表后返回"], "首页显示变量 1/2，返回分页列表保留第二页变量 3/4；非活动列表收起"),
+  "behavior.discovery.closed-shadow": entry("闭合 Shadow 限制", ["只读核对闭合宿主及发现结果"], "闭合根不可访问，内部不伪装成已发现；报告保留限制说明"),
+  "behavior.discovery.wrong-dialog": entry("无关同名弹框关联拦截", ["故意把已打开的无关弹框指定为目标"], "入口被拦截并说明目标已可见，没有打开业务弹框或误关联"),
+  "behavior.discovery.navigation": entry("发现页往返与草稿清理", ["编辑原基础页草稿，切入发现页并编辑/打开两层弹框", "切回基础页再回发现页"], "原基础页草稿保留；发现页临时值和弹框清理，未写入存储"),
+  "behavior.discovery.source-mapping": entry("跨文档来源映射与模型转换", ["采集发现页，检查 13 个同名字段", "确认 Frame A 字段的有限值域并生成模型"], "来源 ID 唯一，Frame 路径保留；两个有限样本生成两条候选，单元格不成为因子"),
   "behavior.inputs.readonly-disabled": entry("只读与禁用输入保护", ["点击只读编码并尝试覆盖", "用 Tab 导航并尝试输入禁用字段"], "只读编码保持 LAB-INPUT-001；禁用字段不获焦且值保持不变"),
   "behavior.inputs.dirty-restore-refresh": entry("修改提示、恢复和刷新", ["填写合法配置并保存", "修改名称后恢复；再修改自由文本并刷新"], "修改提示正确；恢复及刷新丢弃未保存草稿，保留已保存值"),
   "behavior.linkage.unlock-retention-restore": entry("联动解除、保留与恢复", ["依次勾选、取消 A/B 和 C/D", "切换手动来源和高级开关，检查输入保留", "保存，再修改并恢复、刷新"], "解除互斥恢复可用；取消 C 后 D 保持选中且可编辑；切换保留草稿，恢复回到保存值"),
@@ -69,7 +86,7 @@ const methods = { cancel: "取消按钮", x: "右上角关闭按钮", escape: "E
 
 export function describeCase(meta = {}) {
   const id = groupId(meta.candidate?.id);
-  if (meta.modelVersion && meta.modelVersion !== "2026-10-07.1")
+  if (meta.modelVersion && !["2026-10-07.1", "2026-10-11.1"].includes(meta.modelVersion))
     return unknown(id, "该模型版本尚未登记中文场景说明");
   if (groups[id]) {
     const [title, step, expected] = groups[id];

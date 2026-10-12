@@ -115,3 +115,14 @@ test("子进程超时、输出上限和中断只清理本次进程", async () =>
   setTimeout(() => controller.abort(), 50);
   await assert.rejects(promise, /中断/);
 });
+
+test('页面完整目录可独立生成真实 PICT，跨页污染或未知范围被拒绝', async t => {
+  const base = planFor(abcd);
+  const cases = base.cases.filter(c => c.metadata[0].route === '/#/table').map(c => ({ ...c, metadata: [{ ...c.metadata[0], route: '/#/discovery', region: 'discovery' }] }));
+  const plan = { ...base, catalogScope: 'discovery', cases, planned: cases.length };
+  const s = await createSmokeSelection(plan, { way: 2, binary, directory: dir(t) });
+  assert.equal(s.catalogScope, 'discovery'); assert.equal(s.fullPlanned, 17);
+  assert.equal(s.behaviorExecutions, 1); assert.equal(s.verified, true);
+  assert.throws(() => catalogGroups({ ...base, catalogScope: 'discovery' }), /混入/);
+  assert.throws(() => catalogGroups({ ...base, catalogScope: 'unknown' }), /未知/);
+});

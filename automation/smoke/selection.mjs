@@ -5,6 +5,8 @@ import { canonical, fingerprint, generateGroup, groupKey, hash, pictIdentity, va
 export const executionKey = (meta) => canonical([meta.route, meta.candidate.id]);
 export function catalogGroups(plan) {
   if (!Array.isArray(plan.cases) || !plan.cases.length || plan.planned !== plan.cases.length || plan.coverage !== "group-exhaustive-and-explicit-behaviors") throw new Error("冒烟来源必须是完整有限目录，不能使用筛选或冒烟结果再次抽样");
+  if (plan.catalogScope !== undefined && !["all", "discovery"].includes(plan.catalogScope)) throw new Error("未知候选目录范围");
+  if (plan.catalogScope === "discovery" && plan.cases.some(row => row.metadata?.[0]?.route !== "/#/discovery")) throw new Error("发现验证页目录混入其他页面");
   const groups = new Map(), unique = new Map(), keys = new Set();
   for (const row of plan.cases) {
     const meta = row.metadata?.[0], c = meta?.candidate;
@@ -38,7 +40,7 @@ export async function createSmokeSelection(plan, { way = 2, binary, directory, s
   const selectedIds = new Set(groups.flatMap((group) => group.rows.map((r) => r.candidate.id)));
   const cases = plan.cases.filter((row) => row.metadata[0].candidate.classification === "behavior" || selectedIds.has(row.metadata[0].candidate.id));
   const selection = {
-    schemaVersion: 1, kind: "pict-smoke", modelVersion: plan.modelVersion,
+    schemaVersion: 1, kind: "pict-smoke", modelVersion: plan.modelVersion, catalogScope: plan.catalogScope ?? "all",
     requestedWay: way, seed: 1, catalogFingerprint: hash(plan.cases), engine,
     fullPlanned: plan.planned, planned: cases.length,
     configCandidates: groups.reduce((n, g) => n + g.totalCandidates, 0),
@@ -58,6 +60,7 @@ export function readSmokeSelection(path = process.env.MES_SMOKE_SELECTION) {
   let s;
   try { s = JSON.parse(readFileSync(path, "utf8")); } catch (error) { throw new Error(`无法读取冒烟清单：${error.message}`); }
   if (s.kind !== "pict-smoke" || s.schemaVersion !== 1 || !s.verified || !Array.isArray(s.groups) || !s.groups.length || !Array.isArray(s.cases) || s.planned !== s.cases.length) throw new Error("冒烟清单格式无效或未通过覆盖核验，请重新生成");
+  if (!["all", "discovery"].includes(s.catalogScope)) throw new Error("冒烟清单缺少有效范围，请重新生成");
   validateWay(s.requestedWay);
   return s;
 }
@@ -76,7 +79,7 @@ export function selectCandidates(candidates, selection = readSmokeSelection()) {
 export function smokeOverview(selection) {
   if (!selection) return undefined;
   return {
-    requestedWay: selection.requestedWay, seed: selection.seed, verified: selection.verified,
+    catalogScope: selection.catalogScope, requestedWay: selection.requestedWay, seed: selection.seed, verified: selection.verified,
     engine: selection.engine, fullPlanned: selection.fullPlanned, planned: selection.planned,
     configCandidates: selection.configCandidates, selectedConfigCandidates: selection.selectedConfigCandidates,
     selectedValid: selection.selectedValid, selectedInvalid: selection.selectedInvalid,

@@ -159,3 +159,48 @@ test("CLI 不重新执行 UI，支持离线目录并以中文报告输入错误"
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /缺少必需文件/);
 });
+
+test('发现页全量和冒烟准确说明范围，混入其他页面或范围漂移不认定完成', t => {
+  const d = dataset(['passed'], { catalogScope: 'discovery', scope: 'page-confirmed-catalog', coverageComplete: false, pageCoverageComplete: true });
+  d.plan.catalogScope = 'discovery';
+  d.plan.cases[0].metadata[0] = { ...meta('discovery.inputs@2026-10-11.1#1', 'valid'), modelVersion: '2026-10-11.1', region: 'discovery', route: '/#/discovery' };
+  const out = renderChineseReports(d, temp(t));
+  assert.equal(out.facts.pageFull, true); assert.equal(out.facts.full, false);
+  assert.match(out.summary, /发现验证页的分组全量目录已执行，全部通过/);
+  assert.doesNotMatch(out.summary, /本次已执行完整确认目录，全部通过/);
+  assert.match(out.summary, /发现页原生输入与禁用单位/);
+  d.summary.smoke = { catalogScope: 'discovery', requestedWay: 2, planned: 1, fullPlanned: 212, verified: true, selectedValid: 1, selectedInvalid: 0, behaviorExecutions: 0, groups: [] };
+  d.summary.scope = 'smoke-confirmed-catalog'; d.summary.smokeComplete = true;
+  assert.equal(renderChineseReports(d, temp(t)).facts.smokeComplete, true);
+  d.summary.smoke.catalogScope = 'all';
+  assert.equal(renderChineseReports(d, temp(t)).facts.complete, false);
+  delete d.summary.smoke; d.summary.scope = 'page-confirmed-catalog';
+  d.plan.cases[0].metadata[0].route = '/#/table';
+  assert.equal(renderChineseReports(d, temp(t)).facts.pageFull, false);
+});
+
+test('发现页失败报告包含跨文档字段、显示值和无法采集的上下文', t => {
+  const d = dataset(['failed']);
+  const m = { ...meta('discovery.frames@2026-10-11.1#1', 'valid'), modelVersion: '2026-10-11.1', region: 'discovery', route: '/#/discovery' };
+  d.plan.cases[0].metadata[0] = m;
+  d.results[0].attachments = [
+    { name: '实际页面与保存状态', text: JSON.stringify({ url: 'test', fields: [], saved: null }) },
+    { name: 'Frame与Shadow现场证据', text: JSON.stringify({ documents: [
+      { name: 'frame-a', status: 'observed', controls: [{ category: 'field', label: '同名字段', locator: { shadowPath: ['host'] }, currentValue: '输入😀', disabled: false }], cells: [{ columnKey: 'weight', displayText: '12.30 kg', valueKnown: true, businessValue: 12.3 }] },
+      { name: 'frame-b', status: 'unavailable', error: 'Frame 已脱离' },
+    ] }) },
+  ];
+  const out = renderChineseReports(d, temp(t));
+  for (const term of ['Frame / Shadow 收尾现场', 'frame-a', '输入😀', '12.30 kg', 'Frame 已脱离']) assert.ok(out.failures.includes(term), term);
+  assert.match(out.summary, /未验证系统原生菜单点击拦截/);
+  assert.equal(describeCase(m).known, true);
+});
+
+test('收尾采集错误可见且不代替原始断言失败', t => {
+  const d = dataset(['failed']);
+  d.results[0].attachments = [{ name: '收尾采集错误', text: '执行上下文已销毁' }];
+  const out = renderChineseReports(d, temp(t));
+  assert.equal(out.facts.counts.failed, 1);
+  assert.match(out.failures, /收尾采集失败：执行上下文已销毁/);
+  assert.match(out.failures, /此错误不替代原始测试结果/);
+});

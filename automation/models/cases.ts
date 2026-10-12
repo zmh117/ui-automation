@@ -4,7 +4,8 @@ import {
   type Rule,
 } from "@mes-ui/config-enumerator";
 
-export const version = "2026-10-07.1";
+import { version } from "./version";
+export { version };
 export const bool = [false, true];
 export const weights = [
   "",

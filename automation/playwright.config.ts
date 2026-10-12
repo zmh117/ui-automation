@@ -3,8 +3,11 @@ import { resolve } from "node:path";
 
 const out =
   process.env.MES_RUN_DIR ?? resolve("output", `direct-${Date.now()}`);
+const catalogScope = process.env.MES_TEST_SCOPE ?? "all";
+if (!["all", "discovery"].includes(catalogScope)) throw new Error("未知执行范围");
 export default defineConfig({
   testDir: "./tests",
+  testMatch: catalogScope === "discovery" ? "**/discovery.spec.ts" : "**/*.spec.ts",
   fullyParallel: true,
   workers: 4,
   retries: 0,

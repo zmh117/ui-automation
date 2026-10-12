@@ -6,6 +6,7 @@ import { describeCase, pageName } from "../reporting/catalog.mjs";
 export function writeSmokeReview(selection, directory) {
   const lines = [
     "# 冒烟选例说明", "",
+    `候选目录范围：${selection.catalogScope === "discovery" ? "发现验证页" : "全部已注册页面"}。`,
     `请求强度：**${selection.requestedWay}-way**；各组实际强度为请求值与字段数的较小值。`, "",
     `原目录 ${selection.fullPlanned} 次执行，选出 ${selection.planned} 次：${selection.configurationExecutions} 次配置执行（${selection.selectedValid} 个合法候选、${selection.selectedInvalid} 个非法候选在各入口执行）＋ ${selection.behaviorExecutions} 条操作场景。`, "",
     "选择已经通过静态覆盖核验，尚不代表 UI 测试通过。合法 n-way 由微软 PICT 生成；负向和边界由补充策略保留。所有取消、恢复、分页等明确操作场景保持原样。", "",

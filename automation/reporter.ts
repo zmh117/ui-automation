@@ -17,6 +17,8 @@ import { resolve } from "node:path";
 import { writeChineseReports } from "./reporting/chinese-report.mjs";
 import { readSmokeSelection, smokeOverview, verifyExecutionSelection } from "./smoke/selection.mjs";
 
+import { version } from "./models/version";
+
 export default class Results implements Reporter {
   dir = "";
   tests: TestCase[] = [];
@@ -25,6 +27,7 @@ export default class Results implements Reporter {
   planOnly = false;
   filtered = false;
   direct = false;
+  catalogScope = "all";
   smoke: ReturnType<typeof readSmokeSelection> = null;
   meta(t: TestCase) {
     return t.annotations
@@ -45,6 +48,8 @@ export default class Results implements Reporter {
     const invocationData = existsSync(invocation)
       ? JSON.parse(readFileSync(invocation, "utf8"))
       : {};
+    this.catalogScope = process.env.MES_TEST_SCOPE ?? "all";
+    if (invocationData.catalogScope && invocationData.catalogScope !== this.catalogScope) throw new Error("执行范围与调用记录不一致");
     this.planOnly =
       invocationData.mode === "plan" || process.argv.includes("--list");
     const grep = Array.isArray(config.grep) ? config.grep : [config.grep];
@@ -55,6 +60,7 @@ export default class Results implements Reporter {
     );
     this.tests = suite.allTests();
     this.smoke = readSmokeSelection();
+    if (this.smoke && this.smoke.catalogScope !== this.catalogScope) throw new Error("执行范围与冒烟清单不一致");
     const cases = this.tests.map((t) => ({
       id: t.id, title: t.titlePath(),
       metadata: t.annotations.filter((a) => a.type === "case").map((a) => JSON.parse(a.description!)),
@@ -70,7 +76,8 @@ export default class Results implements Reporter {
       JSON.stringify(
         {
           schemaVersion: 1,
-          modelVersion: "2026-10-07.1",
+          modelVersion: version,
+          catalogScope: this.catalogScope,
           coverage: this.smoke ? "group-nway-with-negatives-and-behaviors" : "group-exhaustive-and-explicit-behaviors",
           smoke: smokeOverview(this.smoke),
           planned: this.tests.length,
@@ -166,13 +173,14 @@ export default class Results implements Reporter {
       JSON.stringify(
         {
           schemaVersion: 1,
-          modelVersion: "2026-10-07.1",
+          modelVersion: version,
+          catalogScope: this.catalogScope,
           mode: this.planOnly ? "plan" : "execute",
           scope: this.direct
             ? "direct-unverified-selection"
             : this.filtered
               ? "filtered"
-              : this.smoke ? "smoke-confirmed-catalog" : "full-confirmed-catalog",
+              : this.smoke ? "smoke-confirmed-catalog" : this.catalogScope === "all" ? "full-confirmed-catalog" : "page-confirmed-catalog",
           smoke: smokeOverview(this.smoke),
           status: result.status,
           planned: this.tests.length,
@@ -194,7 +202,8 @@ export default class Results implements Reporter {
             counts.interrupted,
           ...counts,
           complete,
-          coverageComplete: complete && !this.filtered && !this.direct && !this.smoke,
+          coverageComplete: complete && !this.filtered && !this.direct && !this.smoke && this.catalogScope === "all",
+          pageCoverageComplete: complete && !this.filtered && !this.direct && !this.smoke && this.catalogScope === "discovery",
           smokeComplete: complete && !this.filtered && !this.direct && Boolean(this.smoke) && this.tests.length === this.smoke.planned,
           allPassed: complete && counts.passed === this.tests.length,
           errors: this.errors,

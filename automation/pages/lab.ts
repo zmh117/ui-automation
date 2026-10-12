@@ -37,7 +37,7 @@ export function metadata(
       type: "case",
       description: JSON.stringify({
         modelVersion: version,
-        source: "coverage-review.md",
+        source: region === "discovery" ? "openspec/changes/execute-discovery-validation-page/coverage-review.md" : "coverage-review.md",
         region,
         route: mode === "all" ? "/#/all" : `/#/${region}`,
         candidate,

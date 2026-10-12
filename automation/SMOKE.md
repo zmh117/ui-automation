@@ -28,10 +28,17 @@ npm run test:ui:smoke -- --way 3 --headed --slow-mo 300 --workers 1
 # 调试冒烟中的某个场景（报告会注明只执行筛选范围）
 npm run test:ui:smoke -- --way 2 --grep 'behavior.table.add-clear-query-goto-end'
 
-# 原命令继续默认全量
+# 仅发现验证页的完整范围
+npm run ui:smoke:plan -- --scope discovery --way 2
+npm run test:ui:smoke -- --scope discovery --way 2
+npm run test:ui:smoke -- --scope discovery --way 3
+
+# 原命令默认七页全量
 npm run ui:plan
 npm run test:ui
 ```
+
+`--scope` 支持 `all`（默认七页）和 `discovery`（仅新增发现验证页）。生成、预核对和执行使用同一个范围，清单和中文报告均记录 `catalogScope`。旧版缺少范围的冒烟清单需重新生成。
 
 `--way N` 接受安全范围内的正整数，默认 2。也支持 1-way；每组实际强度为 `min(N, 字段数)`。例如只有两个字段的组在 3-way 下会覆盖该组全部合法组合。N 大于字段数不是非法参数，但不会变成跨组组合。`--way` 不能用于默认全量命令；通用写法为 `npm run test:ui -- --suite smoke --way 3`。
 
@@ -93,7 +100,8 @@ flowchart LR
 - `complete`：本次所选用例执行结束；失败也可以是执行结束。
 - `smokeComplete`：整个冒烟清单执行结束，不能存在筛选、跳过、中断或未执行。
 - `allPassed`：本次所选用例全部通过；需结合范围理解。
-- `coverageComplete`：仍专指完整确认目录；冒烟运行始终为 false。
+- `coverageComplete`：专指七页完整确认目录；冒烟运行始终为 false。
+- `pageCoverageComplete`：仅发现页分组全量完整执行时为 true；冒烟始终为 false。
 
 出现同一缺陷影响两个页面入口时，会有两条失败用例；不等于两个独立缺陷。不会为让冒烟变绿而自动跳过或修改断言。
 
@@ -110,3 +118,5 @@ npm --prefix automation run typecheck
 ```
 
 PICT 上游：[官方仓库](https://github.com/microsoft/pict)、[固定版本文档](https://github.com/microsoft/pict/blob/v3.7.4/doc/pict.md)。本次生成数量与浏览器实跑证据见 [验收记录](../openspec/changes/add-pict-nway-smoke/verification.md)。
+
+发现验证页的有限域包括输入、Teleport、Frame、开放 Shadow、列表及扫描预算；原生禁用选项只核验禁用状态，未实现的确认/列表选中不计为保存覆盖。新页独立全量和 2-way/3-way 实跑结果见 [新页验收记录](../openspec/changes/execute-discovery-validation-page/verification.md)。上述旧 PICT 验收记录保留为历史证据。

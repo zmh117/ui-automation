@@ -17,7 +17,7 @@ flowchart LR
   V --> X[经确认的项目页面适配与 UI 断言执行]
 ```
 
-本项目的执行层已实现在 [automation/](../../automation/README.md)。它使用本次人工确认的六页分组模型及页面适配，不直接把 `draft-model.json` 当成执行计划。`discover` 仍然只读扫描，不保存配置，也不执行这些 UI 用例。
+本项目的执行层已实现在 [automation/](../../automation/README.md)。它使用原六页和发现验证页各自明确的分组模型及页面适配，不直接把 `draft-model.json` 当成执行计划。`discover` 仍然只读扫描，不保存配置，也不执行这些 UI 用例。
 
 ## 用本项目实例运行
 
@@ -45,7 +45,7 @@ npm run discover -- --plan examples/discovery-evidence.json --out output/my-evid
 
 原六页计划仍覆盖基础输入、联动、扩展控件、弹框标签页、表格和全部组件页：12 个场景、20 个快照，默认禁用的内层变量入口保持未探索。
 
-新增 `/#/discovery`“发现验证”页，计划 `examples/discovery-evidence.json` 覆盖 10 个场景、21 个快照：两层 Teleport、无关同名弹框、分页/虚拟/远程选项、同 URL 的兄弟 Frame、嵌套和跨源 Frame、嵌套开放 Shadow 根、Shadow 内 Frame、显示格式。它不属于原六页分组枚举范围，不增加原来的 2453 条执行计划。
+新增 `/#/discovery`“发现验证”页，计划 `examples/discovery-evidence.json` 覆盖 10 个场景、21 个快照：两层 Teleport、无关同名弹框、分页/虚拟/远程选项、同 URL 的兄弟 Frame、嵌套和跨源 Frame、嵌套开放 Shadow 根、Shadow 内 Frame、显示格式。它已独立接入 UI 执行：新增 204 条配置 + 8 条操作场景，默认目录从原六页 2453 条增加到七页 2665 条。根目录 `npm run test:ui -- --scope discovery` 执行新页全部 212 条，`npm run test:ui:smoke -- --scope discovery --way 2` 生成并执行真实 PICT 冒烟，自动生成中文报告。详见 [覆盖规格](../../openspec/changes/execute-discovery-validation-page/coverage-review.md)。发现命令本身仍只负责观察。
 
 没有点击新增表格行、业务选项、保存、确认或上传。远程实例真实 GET 本项目静态 JSON；这不是连接真实 MES 的接口验收。
 

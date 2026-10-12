@@ -10,7 +10,7 @@ const matchers = {
   toHaveText: "文本应与预期一致", toContainText: "文本应包含预期内容", toHaveValue: "输入值应与预期一致",
   toBeVisible: "元素可见状态应符合预期", toBeHidden: "元素应隐藏", toBeEnabled: "元素可用/禁用状态应符合预期", toBeDisabled: "元素应禁用",
   toBeChecked: "选中状态应符合预期", toBeFocused: "元素应获得焦点", toBeInViewport: "元素应在可视区域内",
-  toHaveCount: "元素数量应符合预期", toHaveAttribute: "元素属性应符合预期", toHaveClass: "元素样式状态应符合预期",
+  toHaveCount: "元素数量应符合预期", toHaveAttribute: "元素属性应符合预期", toHaveJSProperty: "元素当前属性应符合预期", toHaveClass: "元素样式状态应符合预期",
   toHaveURL: "页面地址应符合预期", toHaveTitle: "页面标题应符合预期", toEqual: "实际数据应等于预期数据",
   toBe: "实际值应等于预期值", toMatchObject: "实际对象应包含预期字段", toHaveLength: "数据长度应符合预期",
   toBeNull: "实际值应为空", toBeGreaterThan: "实际值应大于下限", toBeGreaterThanOrEqual: "实际值应不小于下限",
@@ -117,14 +117,29 @@ function evidence(dir, result) {
     rows.push("\ntrace 是操作回放文件。可从 Playwright HTML 报告打开，或在 automation 目录运行 npx playwright show-trace 后面的 trace.zip 路径。");
   return [...rows, ...previews].join("\n\n");
 }
+function documentObservation(result) {
+  const a = result.attachments?.find(a => a.name === "Frame与Shadow现场证据" && a.text);
+  if (!a) return "";
+  let data;
+  try { data = JSON.parse(a.text); } catch { return "跨文档现场附件损坏，详见原始记录。"; }
+  const rows = [], cells = [], unavailable = [];
+  for (const d of data.documents ?? []) {
+    if (d.status !== "observed") { unavailable.push(`${d.name}：${d.error}`); continue; }
+    for (const c of d.controls ?? []) if (c.category === "field") rows.push([markdown(d.name), markdown(c.locator.shadowPath.join(" → ") || "文档根"), markdown(c.label), value(c.currentValue), c.disabled ? "是" : "否"]);
+    for (const c of d.cells ?? []) cells.push([markdown(d.name), markdown(c.columnKey ?? c.columnLabel), markdown(c.displayText), c.valueKnown ? value(c.businessValue) : "未知"]);
+  }
+  return `\n\n#### Frame / Shadow 收尾现场\n\n${table(["文档", "Shadow 宿主链", "字段", "实际值", "禁用"], rows)}\n\n${table(["文档", "列", "显示文本", "显式业务值"], cells)}${unavailable.length ? "\n\n未采集：" + unavailable.map(markdown).join("；") : ""}`;
+}
 function observation(result) {
+  const captureError = result.attachments?.find(a => a.name === "收尾采集错误" && a.text);
+  const extra = documentObservation(result) + (captureError ? `\n\n收尾采集失败：${markdown(captureError.text)}。此错误不替代原始测试结果。` : "");
   const a = result.attachments?.find((a) => a.name === "实际页面与保存状态" && a.text);
-  if (!a) return "未记录实际页面与保存状态附件。";
+  if (!a) return "未记录实际页面与保存状态附件。" + extra;
   let data;
   try { data = JSON.parse(a.text); } catch { return "实际页面附件格式损坏，无法展开；请查阅 results.jsonl。"; }
   if (!Array.isArray(data.fields)) return "实际页面附件未包含可识别的字段列表。";
   const rows = data.fields.map((f, i) => [markdown(fieldNames[f.id] ?? f.id ?? `无标识字段 ${i + 1}`), value(f.value), f.checked === undefined ? "—" : f.checked ? "是" : "否", f.disabled ? "是" : "否"]);
-  return `采集地址：${markdown(data.url)}。此附件为测试收尾时的只读观察，不一定与截图同一瞬间，也不证明此前每步正确。\n\n${table(["字段", "实际值", "选中", "禁用"], rows)}\n\nlocalStorage：${data.saved === null ? "未保存记录" : data.saved === undefined ? "未记录" : "存在保存记录；完整原文见 results.jsonl 中同名附件"}。`;
+  return `采集地址：${markdown(data.url)}。此附件为测试收尾时的只读观察，不一定与截图同一瞬间，也不证明此前每步正确。\n\n${table(["字段", "实际值", "选中", "禁用"], rows)}\n\nlocalStorage：${data.saved === null ? "未保存记录" : data.saved === undefined ? "未记录" : "存在保存记录；完整原文见 results.jsonl 中同名附件"}。${extra}`;
 }
 
 function readJSON(dir, name, required = false) {
@@ -173,23 +188,28 @@ function facts(data) {
     for (const [key, actual] of Object.entries({ planned, ...counts }))
       if (summary[key] !== actual) warnings.push(`汇总中的 ${statuses[key] ?? "计划"} 数量为 ${summary[key]}，逐条证据为 ${actual}；以下以逐条证据为准。`);
   }
+  const catalogScope = summary?.catalogScope ?? plan.catalogScope ?? "all";
+  if (summary?.catalogScope && plan.catalogScope && summary.catalogScope !== plan.catalogScope) warnings.push("汇总与计划的候选目录范围不一致。");
+  if (catalogScope === "discovery" && items.some(c => c.meta.route !== "/#/discovery")) warnings.push("发现验证页范围混入其他页面。");
   const smoke = summary?.smoke ?? plan.smoke;
+  if (smoke?.catalogScope && smoke.catalogScope !== catalogScope) warnings.push("冒烟清单与实际候选目录范围不一致。");
   if (smoke && !smoke.verified) warnings.push("冒烟选例未通过覆盖核验，不能认定冒烟完成。");
   const planOnly = summary?.mode === "plan" || invocation?.mode === "plan";
   const complete = !planOnly && !!summary?.complete && !warnings.length && planned > 0 &&
     !counts.notRun && !counts.skipped && !counts.interrupted && !summary?.errors?.length && !["interrupted", "timedout"].includes(summary?.status);
   const scope = summary?.scope ?? "unknown";
-  const full = complete && !smoke && scope === "full-confirmed-catalog" && summary?.coverageComplete === true;
+  const full = complete && !smoke && scope === "full-confirmed-catalog" && catalogScope === "all" && summary?.coverageComplete === true;
+  const pageFull = complete && !smoke && scope === "page-confirmed-catalog" && catalogScope === "discovery" && summary?.pageCoverageComplete === true;
   const smokeComplete = complete && scope === "smoke-confirmed-catalog" && !!smoke?.verified && summary?.smokeComplete === true && planned === smoke.planned;
   const allPassed = complete && counts.passed === planned && summary?.status === "passed";
   let conclusion = planOnly ? "本次仅生成执行计划，没有操作页面，也没有通过或失败结论。"
     : warnings.length ? "执行证据不完整或存在不一致，不能认定本次验证完成。"
       : !complete ? "本次运行未完成，不能作为完整覆盖的验收结果。"
-        : allPassed ? full ? "本次已执行完整确认目录，全部通过。" : smokeComplete ? "本次冒烟清单全部通过；不代表全量配置已验证。" : "本次所选用例全部通过；这不代表完整确认目录已验证。"
+        : allPassed ? full ? "本次已执行完整确认目录，全部通过。" : pageFull ? "发现验证页的分组全量目录已执行，全部通过；不代表整个项目全量通过。" : smokeComplete ? "本次冒烟清单全部通过；不代表全量配置已验证。" : "本次所选用例全部通过；这不代表完整确认目录已验证。"
           : `本次所选用例已执行结束，存在 ${counts.failed} 条失败、${counts.timedOut} 条超时。`;
-  return { items, counts, planned, warnings, planOnly, scope, complete, full, smoke, smokeComplete, allPassed, conclusion };
+  return { items, counts, planned, warnings, planOnly, scope, catalogScope, complete, full, pageFull, smoke, smokeComplete, allPassed, conclusion };
 }
-const scopeNames = { "full-confirmed-catalog": "完整确认目录（分组全量 + 明确操作场景）", "smoke-confirmed-catalog": "PICT 冒烟（组内合法 n-way + 非法代表/边界 + 操作场景）", filtered: "筛选后的用例范围", "direct-unverified-selection": "直接运行，未确认是否选择完整目录", unknown: "范围信息缺失" };
+const scopeNames = { "page-confirmed-catalog": "发现验证页完整目录（分组全量 + 明确操作场景）", "full-confirmed-catalog": "完整确认目录（分组全量 + 明确操作场景）", "smoke-confirmed-catalog": "PICT 冒烟（组内合法 n-way + 非法代表/边界 + 操作场景）", filtered: "筛选后的用例范围", "direct-unverified-selection": "直接运行，未确认是否选择完整目录", unknown: "范围信息缺失" };
 function timestamp(value) {
   if (!value || Number.isNaN(Date.parse(value))) return "未记录";
   return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", dateStyle: "medium", timeStyle: "medium", hour12: false }).format(new Date(value)) + "（北京时间）";
@@ -219,15 +239,17 @@ export function renderChineseReports(data, dir) {
   const warnings = f.warnings.length ? `证据提醒：\n\n${f.warnings.map((w) => `- ${markdown(w)}`).join("\n")}` : "";
   const globalErrors = summary?.errors?.length ? `### 运行级错误\n\n${details("展开原始运行错误", fence(summary.errors.join("\n\n")))}` : "";
   const smokeInfo = f.smoke ? [
-    `**冒烟强度：${f.smoke.requestedWay}-way**。完整候选目录 ${f.smoke.fullPlanned} 次执行，冒烟清单 ${f.smoke.planned} 次；本次实际选择 ${f.planned} 次。`,
+    `**冒烟强度：${f.smoke.requestedWay}-way**。当前范围完整候选目录 ${f.smoke.fullPlanned} 次执行，冒烟清单 ${f.smoke.planned} 次；本次实际选择 ${f.planned} 次。`,
     `配置候选：${f.smoke.selectedValid} 个合法、${f.smoke.selectedInvalid} 个非法；保留 ${f.smoke.behaviorExecutions} 条操作场景。组内不足 N 个字段时使用全部字段的强度。`,
     `选例覆盖核验：${f.smoke.verified ? "已通过" : "未通过"}；整个冒烟执行完成：${f.smokeComplete ? "是" : "否"}。选例覆盖是输入组合的静态核验，不等于页面断言通过，也不等于全量回归完成。`,
   ].join("\n\n") : "";
   const intro = [
     `**${f.conclusion}**`, counts,
     `运行目录：${markdown(basename(dir))}。范围：${scopeNames[f.scope] ?? markdown(f.scope)}。模型版本：${markdown(data.plan.modelVersion ?? "未记录")}。`,
+    `候选目录范围：${f.catalogScope === "discovery" ? "发现验证页" : "全部已注册页面"}。`,
     `开始：${timestamp(invocation?.startedAt)}；结束：${timestamp(summary?.finishedAt)}。`,
-    "“非法配置”指输入目标不符合规则；测试通过表示页面按预期拒绝或修正它。中断、跳过和未执行不等于产品缺陷。",
+    "“非法配置”指输入目标不符合规则；测试通过表示相应禁用状态、拦截或修正符合断言，具体以场景说明为准。中断、跳过和未执行不等于产品缺陷。",
+    f.items.some(c => c.meta.route === "/#/discovery") ? "发现验证页范围说明：本页没有保存功能，验证隔离、取消、刷新复位及只读发现；原生禁用选项只核验 disabled/selected 状态，未验证系统原生菜单点击拦截。闭合 Shadow 内部、虚拟列表未遍历窗口及未实现的选中/确认不计为覆盖。" : "",
     smokeInfo, warnings, globalErrors,
   ].filter(Boolean).join("\n\n");
   const issues = f.items.filter((c) => c.result && c.result.status !== "passed");
