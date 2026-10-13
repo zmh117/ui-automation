@@ -113,7 +113,7 @@ function scene(l: DiscoveryLab, entry: string): DiscoveryScene {
 }
 cases(models.observation, async (l, v) => {
   const limits = ({ normal: {}, options: { maxOptions: 1 }, shadow: { maxShadowDepth: 1 }, frames: { maxFrames: 1 }, cells: { maxCells: 1 } } as Record<string, object>)[v.budget];
-  const report = await discoverPage(l.page, { schemaVersion: 2, id: 'execution-observation', scenes: [scene(l, v.entry)], limits });
+  const report = await discoverPage(l.page, { schemaVersion: 3, id: 'execution-observation', scenes: [scene(l, v.entry)], limits });
   await test.info().attach('发现证据', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
   const expected = v.budget === 'normal' || v.entry === 'frame' && v.budget === 'options' ? 'completed' : 'partial';
   expect(report.status, '预算截断必须与计划执行状态区分').toBe(expected);
@@ -180,13 +180,13 @@ behavior('list-wrap', async l => {
 behavior('closed-shadow', async l => {
   expect(await l.page.getByTestId('closed-shadow').evaluate(el => el.shadowRoot)).toBeNull();
   expect((await scan(l)).controls.some(c => c.locator.shadowPath.some(s => s.includes('closed-shadow')))).toBe(false);
-  const r = await discoverPage(l.page, { schemaVersion: 2, id: 'closed-boundary', scenes: [{ ...scene(l, 'teleport'), steps: [] }] });
+  const r = await discoverPage(l.page, { schemaVersion: 3, id: 'closed-boundary', scenes: [{ ...scene(l, 'teleport'), steps: [] }] });
   expect(r.limitations.join(' ')).toContain('闭合 Shadow');
 });
 behavior('wrong-dialog', async l => {
   const s = scene(l, 'teleport');
   s.steps = [{ ...s.steps[0]!, expected: byId('unrelated-dialog') }];
-  const r = await discoverPage(l.page, { schemaVersion: 2, id: 'wrong-dialog', scenes: [s] });
+  const r = await discoverPage(l.page, { schemaVersion: 3, id: 'wrong-dialog', scenes: [s] });
   expect(r.status).toBe('partial'); expect(r.scenes[0]!.status).toBe('blocked');
   expect(r.scenes[0]!.reason).toContain('已可见');
   await expect(l.page.getByTestId('evidence-dialog')).toHaveCount(0);
@@ -203,7 +203,7 @@ behavior('navigation', async l => {
   await p.getByTestId('nav-discovery').click(); expect(await l.value('main')).toBe('主文档值');
 });
 behavior('source-mapping', async l => {
-  const r = await discoverPage(l.page, { schemaVersion: 2, id: 'mapping', scenes: [{ ...scene(l, 'teleport'), steps: [] }] });
+  const r = await discoverPage(l.page, { schemaVersion: 3, id: 'mapping', scenes: [{ ...scene(l, 'teleport'), steps: [] }] });
   const draft = await createDiscoveryDraft(r);
   const shared = draft.fields.filter(f => f.locator.selector === byId('shared-field').selector);
   expect(shared).toHaveLength(13); expect(new Set(shared.map(f => f.sourceId)).size).toBe(13);

@@ -1,6 +1,6 @@
 # 页面自动发现
 
-本模块读取运行页面的 DOM，不需要导入被测项目的 Vue 源码。原生表单和 ARIA 控件按通用语义识别，Element Plus 的下拉、日期、级联、数字输入和滑块补充 DOM 适配。只按指定入口展开；隐藏在业务选项后面的状态留待后续明确测试。
+本模块读取运行页面的 DOM，不需要导入被测项目的 Vue 源码。原生表单和 ARIA 控件按通用语义识别，Element Plus 的下拉、日期、级联、数字输入和滑块补充 DOM 适配；现场 iView/md 的下拉封装、单选组、复选框也按已识别组件边界归一。支持按指定入口展开，也支持显式开启有界自动探索；隐藏在业务选项后面的状态留待后续明确测试。
 
 ```mermaid
 flowchart LR
@@ -17,7 +17,7 @@ flowchart LR
   V --> X[经确认的项目页面适配与 UI 断言执行]
 ```
 
-本项目的执行层已实现在 [automation/](../../automation/README.md)。它使用原六页和发现验证页各自明确的分组模型及页面适配，不直接把 `draft-model.json` 当成执行计划。`discover` 仍然只读扫描，不保存配置，也不执行这些 UI 用例。
+本项目的执行层已实现在 [automation/](../../automation/README.md)。它使用原六页和发现验证页各自明确的分组模型及页面适配，不直接把 `draft-model.json` 当成执行计划。`discover` 负责观察及展开入口，不填写、保存配置，也不执行这些 UI 用例。
 
 ## 用本项目实例运行
 
@@ -47,7 +47,7 @@ npm run discover -- --plan examples/discovery-evidence.json --out output/my-evid
 
 新增 `/#/discovery`“发现验证”页，计划 `examples/discovery-evidence.json` 覆盖 10 个场景、21 个快照：两层 Teleport、无关同名弹框、分页/虚拟/远程选项、同 URL 的兄弟 Frame、嵌套和跨源 Frame、嵌套开放 Shadow 根、Shadow 内 Frame、显示格式。它已独立接入 UI 执行：新增 204 条配置 + 8 条操作场景，默认目录从原六页 2453 条增加到七页 2665 条。根目录 `npm run test:ui -- --scope discovery` 执行新页全部 212 条，`npm run test:ui:smoke -- --scope discovery --way 2` 生成并执行真实 PICT 冒烟，自动生成中文报告。详见 [覆盖规格](../../openspec/changes/execute-discovery-validation-page/coverage-review.md)。发现命令本身仍只负责观察。
 
-没有点击新增表格行、业务选项、保存、确认或上传。远程实例真实 GET 本项目静态 JSON；这不是连接真实 MES 的接口验收。
+上述两个指定计划没有点击新增表格行、业务选项、保存、确认或上传。远程实例真实 GET 本项目静态 JSON；这不是连接真实 MES 的接口验收。
 
 ## 入口计划
 
@@ -55,7 +55,7 @@ npm run discover -- --plan examples/discovery-evidence.json --out output/my-evid
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "my-vue-editor",
   "limits": { "maxSnapshots": 30, "timeoutMs": 5000 },
   "scenes": [{
@@ -76,7 +76,7 @@ npm run discover -- --plan examples/discovery-evidence.json --out output/my-evid
 }
 ```
 
-每个场景先离开原文档再加载 URL，清除 Vue 未保存的界面状态，避免连续同路由扫描沿用前一次弹框；上下文内的登录和已保存存储保留。初始页面和每个成功展开步骤各记录一份快照。不同场景可复用相同前缀，构成多个观察分支；没有自动点击所有按钮或无限 BFS。
+每个场景先离开原文档再加载 URL，清除 Vue 未保存的界面状态，避免连续同路由扫描沿用前一次弹框；上下文内的登录和已保存存储保留。初始页面和每个成功展开步骤各记录一份快照。不同场景可复用相同前缀，构成多个观察分支；未开启 exploration 时只执行指定步骤；开启后运行下述有界 BFS。
 
 | 设置 | 说明 |
 |---|---|
@@ -90,7 +90,104 @@ npm run discover -- --plan examples/discovery-evidence.json --out output/my-evid
 
 选择器歧义、禁用入口、越界操作、超时会记入报告；不会 force 点击。默认预算：60 快照、每快照累计 300 控件和 300 单元格、每字段 100 选项、文本 500 字符、每次定位/导航等待 5 秒、每快照 20 个文档（含扫描起点）、Frame 深度 4、开放 Shadow 深度 8。预算或截断不能标为完整发现。Ctrl+C 在当前有界动作结束后停止后续动作并尽量导出已有结果。
 
-项目指定入口是前提：仅凭按钮名字无法证明另一个系统的打开动作没有副作用；自动保存页面应先选择已确认只读取数据的入口。工具不会主动调用业务写接口或应用存储写 API。
+起始场景需要指定；自动探索按展示语义识别入口。仅凭按钮名字无法证明另一个系统的打开动作没有副作用；会自动创建服务端草稿或自动保存的页面应排除，随后使用项目专用规则。工具不会主动调用业务写接口或应用存储写 API。
+
+## 自动识别入口并增加扫描深度
+
+第八个练习页 `/#/entries` 包含新增弹框、新建页面、同名行修改／详情、独立窗口、只读统计、标签页、下拉、嵌套弹框及删除确认层。它是发现实例，本轮没有加入原七页配置全量／PICT 目录。
+
+在 `packages/config-enumerator/` 运行：
+
+```bash
+npm run build
+npm run discover -- --plan examples/entry-exploration.json --out output/my-auto-discovery
+# 对已有计划开启自动探索；URL / ready / scope 仍来自已有计划
+npm run discover -- --plan examples/playground-discovery.json --out output/my-deep-discovery --auto-explore --max-depth 5 --max-actions 200
+```
+
+`exploration: {}` 即开启，默认最大深度 4、动作预算 100、界面稳定窗口 300ms。`--max-depth` 范围 1..16；`--max-actions` 范围 1..2000。动作预算包含分支前置步骤重放；`limits.maxSnapshots` 为全部场景共享上限。深度是**自动展开动作数**：新增→标签页→高级配置为 3，Frame 和 Shadow 嵌套另算。计划中显式 `steps` 是起点前置路径，不计入自动深度。
+
+```mermaid
+flowchart TD
+  A[起始页及前置步骤] --> B[扫描可见控件和功能按钮]
+  B --> C{唯一定位与展示语义}
+  C -->|未知／禁用／危险／主配方| R[记录未探索原因]
+  C -->|允许| Q[BFS 路径队列]
+  Q --> S[重建起点并重放路径]
+  S --> N{确认界面变化}
+  N -->|弹框／表单／路由／窗口／下拉| D[新快照和完整路径]
+  N -->|歧义／超时／不一致| R
+  D --> E{删除确认层或达到预算}
+  E -->|是| R
+  E -->|否| B
+```
+
+| 入口 | 自动处理 |
+|---|---|
+| 新增、新建、添加、修改、编辑 | 打开表单；可以进入相同来源的路由或新窗口 |
+| 详情、查看、预览、展示、展开、配置、更多 | 尝试打开展示界面；没有可确认变化时记录阻止原因 |
+| 语义标签页、下拉、日期面板 | 展开观察；不选择选项、不填写业务值 |
+| 保存、提交、确认、启用、撤销、导出等 | 只采集，不点击 |
+| 其他未知按钮／未知图标 | 只采集，说明无法确认其展示语义 |
+| 删除 | 默认不点击；仅下面明确配置的确认层允许打开，确认层是终点 |
+
+名称识别支持相应常见英文词；采集链接、summary、按钮及 menuitem，使用 title/aria-label 和少量明确图标类补充现场图标。不会根据任意 class 猜测功能，也不会用行号拼装 XPath。具有 `data-row-key` 的行把修改按钮绑定到该业务行；固定列没有可靠行键时不按第 N 行合并。`controls[].row` 记录行上下文，单元格仍保留原始显示证据。表单／只读详情由命名区域补充展示文本，不用同名字段字典覆盖前一个值。
+
+**删除契约示例**（目标和 expected 也支持 anchor / shadowPath；iframe 使用 framePath）：
+
+```json
+"exploration": {
+  "maxDepth": 4,
+  "maxActions": 180,
+  "excludeNames": ["主配方"],
+  "excludeUrlIncludes": ["mode=recipe"],
+  "confirmationEntries": [{
+    "target": { "selector": "button[aria-label=\"删除物料 A\"]" },
+    "expected": { "selector": "[role=\"alertdialog\"][aria-label=\"删除确认\"]" }
+  }]
+}
+```
+
+此契约表示你已确认该按钮仅打开此弹框。程序核对其从不可见到可见，记录后停止；不点击弹框内任何后续按钮。它不能撤销一个实际上直接删除数据的错误配置。原生 JavaScript confirm 不作为可扫描 DOM 弹框。未配置的其他删除按钮仍不点击。
+
+默认在入口名称、文档标题、可见标题中排除“主配方”，并支持排除 URL 片段；iframe 的排除结果记录在 `documents`。隐藏在无语义路由里的主配方必须补充其实际 `excludeUrlIncludes`，不能声称知道所有系统的路由命名。排除范围先于自动动作判断。
+
+每条分支重新进入场景并重放已发现路径，**不会点击取消或后退猜测恢复状态**。同一上下文保留登录 Cookie 和存储，不忽略 URL 的 query/hash；`id=A` 和 `id=B` 是不同编辑页面。CLI 默认仍用隔离上下文；现场通过 SDK 传入已登录的 Page 即可复用登录，但重建文档会丢弃未保存的界面草稿。只关闭本次动作打开的窗口，调用方已有窗口保留。
+
+报告新增“自动探索路径”“页面及列表操作入口”。`report.json` 的 `exploration.results[].path` 包含来源 Page URL、Frame 地址、唯一目标、目标界面；快照的 `path` 与它对应。`steps + path` 是操作路径证据，**不是自动确认的业务测试用例**。无变化、多个弹框、错误确认层、异源跳转、路径重放不一致、深度／动作预算不足均记录，报告状态为 partial；按策略跳过的按钮单列展示。候选字段仍须确认有限值域和规则才能进入枚举器。
+
+## 无唯一 ID 时怎样定位
+
+定位顺序为：**稳定属性 → 精确名称/标签 → 父子或兄弟语义关系 → 明确未定位**。每个候选都会回查，只有在所在 Document/ShadowRoot 中唯一命中原目标才输出地址。稳定属性包括 testid、非已知动态 ID、name 和业务字段键；动态组件 ID、当前输入值、序号、绝对 DOM 层级不作为生成依据。
+
+例如页面和弹框都有“分组”：先识别“变量编辑”弹框，再在其中找到“分组”字段容器，最后查找容器内的下拉组件。组件没有自身标签时，可以由带标签的子节点反查组件，或由同层兄弟的精确语义识别。兄弟顺序不参与定位。
+
+名称即使当前全局唯一，也优先绑定可唯一识别的所属区域，避免新弹框出现同名元素后地址漂移。分页跳转等明确组件类型可以作为父容器锚点，匿名 div 层级不能作为锚点。
+
+生成的 `selector` 有两种：稳定 CSS，或 `anchor=` 开头的 JSON 步骤。步骤仅有 `descendant / ancestor / sibling`，配合组件类型与精确 `name / text`。它们由扫描器生成，用同一内核解析，**不能把 anchor 字符串直接交给 page.locator**：
+
+```ts
+const frame = await enterFrames(page.mainFrame(), field.context.framePath, 5000)
+const element = await findElement(frame, field.locator)
+if (!element) throw new Error('目标已不存在，停止当前步骤')
+try {
+  // 根据已确认的组件适配执行操作；复合控件地址指向组件根。
+} finally {
+  await element.dispose()
+}
+```
+
+入口计划也支持 anchor 地址；不要手写很长的关系链。低层 `resolveDomElement` 的序列化参数为 `{ resolve: address }`，一般直接用 `findElement / waitElement` 即可。
+
+`nth-child / nth-of-type / first-child / XPath 序号 / 绝对层级` 会被拒绝；运行时多匹配直接报错，绝不取第一个。**稳定 CSS、ID 和语义关系地址都先排除隐藏节点，再判断唯一性**。自身或任意祖先的 `hidden`、`aria-hidden=true`、`inert`、`display:none`、`visibility:hidden/collapse`、`opacity:0`、`content-visibility:hidden` 都会使目标不可匹配。开放 Shadow 沿宿主与 slot 追溯，跨源/嵌套 Frame 由 Playwright 逐层检查 iframe 入口。
+
+隐藏副本不参与唯一性判断，多个可见副本仍报歧义。已经生成的地址在目标或父区域隐藏后，`findElement` 返回空；`waitElement` 等待目标及入口可见后才成功，超时则失败。没有隐藏节点绕过选项。指定弹框尚未打开时不会匹配，打开后可以按同一地址等待；模态弹框隐藏原编辑区时，仍扫描本次已关联的可见弹框。
+
+可见但 `disabled` 的控件仍会被记录，保留禁用状态；复合组件的隐藏代理 input 不作为独立定位目标，但可由可见组件读取其当前状态。上述可见性过滤不等于“当前在视口内”或“未被其他窗口遮挡”，实际点击仍由 Playwright 检查可操作性。标签、业务属性变更后仍可能失效，工具不会承诺任意改版都能自动修复。
+
+找不到可靠地址时，保留 `basis: unresolved, unique: false, selector: ""` 和原因，报告列出“未定位控件”，发现状态为 partial。它们不能进入候选模型/确认映射。单元格即使未定位仍保留显示证据，但不能回放。不要为追求字段数量而强行使用序号兜底。
+
+“不要重复定位”的处理：重叠扫描区域先按 DOM 节点去重；已识别下拉/日期/数字组件的外壳、内部输入和隐藏代理只记一个控件；单选按钮汇总到唯一组容器。真实独立子输入保留。地址与候选查询缓存在单次扫描内复用，多个快照的同一稳定字段合并到一个候选字段。缓存不跨重新渲染：下一次操作仍应重新解析地址，不能长期复用旧 ElementHandle。
 
 ## 四类发现证据
 
@@ -130,7 +227,7 @@ Element Plus 的 `data-testid` 可能落在没有 dialog 角色的内部容器�
 
 这是地址片段；完整场景还需 URL、ready、steps 等。Frame 路径中的 iframe 本身也可以位于开放 Shadow 根。扫描递归处理范围内可见 iframe，包括浏览器能够访问的跨源子文档；`documents` 分别记录 `scanned`、`unavailable`、`limited`。跨源不通过父页面 JavaScript 读取，而由 Playwright 进入对应 Frame。
 
-控件和单元格携带 `context.url`、`context.framePath`、`locator.shadowPath`。同 URL 的兄弟 Frame、主文档和 Shadow 中重复的 ID 不合并。字段来源映射保留这些地址，可通过导出的 `enterFrames`、`findElement` 重新定位。结构性定位只对当次 DOM 有效，生产回归宜补稳定 testid。原生 radio-group 的来源定位表示一组选项，回放应在对应根内按组选择具体选项，不能直接交给要求单元素的 findElement。
+控件和单元格携带 `context.url`、`context.framePath`、`locator.shadowPath`。同 URL 的兄弟 Frame、主文档和 Shadow 中重复的 ID 不合并。字段来源映射保留这些地址，可通过导出的 `enterFrames`、`findElement` 重新定位。不生成结构序号定位。radio-group 的地址指向唯一组容器，可交给 findElement；选择具体选项仍需在该组内按标签或业务值操作。无法可靠区分的多个原生组保持未定位。
 
 闭合 Shadow 根和 Canvas 内部不支持。Frame 无法进入、预算不足、Shadow 过深均记录部分发现；本功能不能证明完全没有不可见或闭合的组件。
 
@@ -140,13 +237,13 @@ Element Plus 的 `data-testid` 可能落在没有 dialog 角色的内部容器�
 
 - `displayText`：可见渲染文本（innerText，空白规范化），隐藏子元素不混入；`displayTruncated` 标记文本截断。
 - `businessValue` / `valueKnown`：仅读取显式 `data-discovery-value` JSON；未知时为 null / false，不从显示文本猜测，也不读 Vue 私有状态。
-- `table`、`row`、`rowKey`、`rowIndex`、`columnKey`、`columnIndex`、`columnLabel` 及文档/Shadow 地址：定位同一条证据。行键来自 `data-row-key`，列键来自 `data-column-key`；缺少业务键时只保留结构定位或序号。
+- `table`、`row`、`rowKey`、`rowIndex`、`columnKey`、`columnIndex`、`columnLabel` 及文档/Shadow 地址：定位同一条证据。行键来自 `data-row-key`，列键来自 `data-column-key`；缺少可靠锚点时地址标为 unresolved，序号只作为显示证据，不能用于回放定位。
 
 实例：`<td data-discovery-value="12.3">12.30 kg</td>` 会分别记录数字 12.3 和文本 `12.30 kg`。后续断言应使用独立规格同时判断数值及精度/单位显示，不能用被测显示反推预期。采集不等于像素级视觉校验；CSS 伪元素、图片和 Canvas 需额外适配或截图断言。复杂多级表头、合并单元格应优先提供明确行列键。
 
 单元格不会自动变成枚举因子。只采集当前渲染行，不宣称表格全量数据已发现。
 
-发现计划、报告、草稿、映射统一为 `schemaVersion: 2`，旧版数据拒绝转换；请更新入口计划并重新发现。枚举核心模型格式不受影响。
+发现计划、报告、草稿、映射统一为 `schemaVersion: 3`，旧版数据拒绝转换；请更新入口计划并重新发现。枚举核心模型格式不受影响。
 
 ## 观察事实与业务规则
 
@@ -222,6 +319,6 @@ PLAYGROUND_URL=http://127.0.0.1:5174/ npm run test:discovery
 
 集成测试在隔离上下文读取运行中的本项目；核对 localStorage 前后相同、业务选项不变、无非读取 HTTP 请求、入口限制和模型转换。补充静态原生组件页只用于密码、ARIA、预算等边界，不能替代项目验收。
 
-真实浏览器测试还覆盖弹框关联、选项完整性、跨源/嵌套 Frame、开放 Shadow、重复字段身份、定位复用、显示文本、错误关联和预算。弱定位下不同类型/标签不会静默合并成同一字段；不同路由默认分别保留，即使展示相同组件。验收结果见 [本次验收记录](../../../openspec/changes/complete-discovery-evidence/verification.md)。
+真实浏览器测试还覆盖弹框关联、选项完整性、跨源/嵌套 Frame、开放 Shadow、重复字段身份、定位复用、显示文本、错误关联和预算。无 ID 的脱敏现场结构还验证父子/兄弟定位、组件去重、节点重排、重渲染、歧义拒绝和未定位字段排除；不同路由默认分别保留，即使展示相同组件。验收结果见 [稳健定位验收](../../openspec/changes/robust-discovery-locators/verification.md)。
 
 语义和读取机制参考：[Playwright Locators](https://playwright.dev/docs/locators)、[Evaluating JavaScript](https://playwright.dev/docs/evaluating)。本模块生成结构化 DOM 记录，未将静态 ASCII 页面图作为运行输入。

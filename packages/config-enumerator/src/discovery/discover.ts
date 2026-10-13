@@ -1,9 +1,9 @@
 import type { ElementHandle, Frame, Page } from "playwright";
-import { scanDocument } from "./scan.js";
+import { captureSnapshot, discoveryDefaults as defaults } from "./observe.js";
+import { exploreEntries, pageExclusion } from "./explore.js";
 import { enterFrames, findElement, waitElement } from "./dom.js";
-import type { DialogAssociation, DiscoveryPlan, DiscoveryReport, DiscoverySnapshot, DiscoveryStep, DomAddress, PopupLink, ScanOptions, SceneResult } from "./types.js";
+import type { DialogAssociation, DiscoveryPlan, DiscoveryReport, DiscoverySnapshot, DiscoveryStep, DomAddress, PopupLink, SceneResult } from "./types.js";
 
-const defaults = { maxSnapshots: 60, maxControls: 300, maxOptions: 100, maxTextLength: 500, timeoutMs: 5000, maxCells: 300, maxFrames: 20, maxFrameDepth: 4, maxShadowDepth: 8 };
 function object(value: unknown, name: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${name} 必须是对象`);
   return value as Record<string, unknown>;
@@ -24,8 +24,8 @@ function address(value: unknown, name: string) {
 }
 export function parseDiscoveryPlan(input: unknown): DiscoveryPlan {
   const plan = object(input, "plan");
-  if (plan.schemaVersion !== 2) throw new Error("发现计划仅支持 schemaVersion=2，请按新版示例重新生成；不兼容旧计划");
-  checkKeys(plan, ["schemaVersion", "id", "scenes", "limits"], "plan"); string(plan.id, "plan.id");
+  if (plan.schemaVersion !== 3) throw new Error("发现计划仅支持 schemaVersion=3，请按新版示例重新生成；不兼容旧计划");
+  checkKeys(plan, ["schemaVersion", "id", "scenes", "limits", "exploration"], "plan"); string(plan.id, "plan.id");
   if (!Array.isArray(plan.scenes) || !plan.scenes.length || plan.scenes.length > 500) throw new Error("scenes 须包含 1 到 500 个场景");
   const ids = new Set<string>();
   for (const [index, value] of plan.scenes.entries()) {
@@ -54,10 +54,32 @@ export function parseDiscoveryPlan(input: unknown): DiscoveryPlan {
     const ceilings: Record<string, number> = { maxSnapshots: 1000, maxControls: 5000, maxOptions: 5000, maxTextLength: 10000, timeoutMs: 30000, maxCells: 5000, maxFrames: 100, maxFrameDepth: 10, maxShadowDepth: 16 };
     for (const [key, value] of Object.entries(limits)) if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > ceilings[key]!) throw new Error(`limits.${key} 超出允许范围 1..${ceilings[key]}`);
   }
+  if (plan.exploration !== undefined) {
+    const e = object(plan.exploration, 'exploration');
+    checkKeys(e, ['maxDepth', 'maxActions', 'settleMs', 'excludeNames', 'excludeUrlIncludes', 'confirmationEntries'], 'exploration');
+    for (const [key, min, max] of [['maxDepth', 1, 16], ['maxActions', 1, 2000], ['settleMs', 100, 3000]] as const) {
+      if (e[key] !== undefined && (!Number.isSafeInteger(e[key]) || Number(e[key]) < min || Number(e[key]) > max)) throw new Error(`exploration.${key} 须为 ${min}..${max}`);
+    }
+    for (const key of ['excludeNames', 'excludeUrlIncludes']) if (e[key] !== undefined) {
+      if (!Array.isArray(e[key]) || e[key].length > 100) throw new Error(`exploration.${key} 须为最多 100 项的数组`);
+      e[key].forEach((v, i) => string(v, `exploration.${key}[${i}]`));
+    }
+    if (e.confirmationEntries !== undefined) {
+      if (!Array.isArray(e.confirmationEntries) || e.confirmationEntries.length > 100) throw new Error('confirmationEntries 须为最多 100 项的数组');
+      e.confirmationEntries.forEach((item, i) => {
+        const c = object(item, `confirmationEntries[${i}]`); checkKeys(c, ['target', 'expected', 'framePath'], 'confirmationEntry');
+        address(c.target, 'confirmationEntry.target'); address(c.expected, 'confirmationEntry.expected');
+        if (c.framePath !== undefined) {
+          if (!Array.isArray(c.framePath) || c.framePath.length > 10) throw new Error('confirmationEntry.framePath 超出范围');
+          c.framePath.forEach((a, j) => address(a, `confirmationEntry.framePath[${j}]`));
+        }
+      });
+    }
+  }
   return JSON.parse(JSON.stringify(input)) as DiscoveryPlan;
 }
 export async function fingerprintReport(report: DiscoveryReport): Promise<string> {
-  const identity = JSON.stringify({ schemaVersion: report.schemaVersion, artifactType: report.artifactType, plan: report.plan, status: report.status, scope: report.scope, snapshots: report.snapshots, scenes: report.scenes, limitations: report.limitations });
+  const identity = JSON.stringify({ schemaVersion: report.schemaVersion, artifactType: report.artifactType, plan: report.plan, status: report.status, scope: report.scope, snapshots: report.snapshots, scenes: report.scenes, limitations: report.limitations, exploration: report.exploration });
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity));
   return Array.from(new Uint8Array(digest), (x) => x.toString(16).padStart(2, "0")).join("");
 }
@@ -96,7 +118,7 @@ async function clickTarget(target: ElementHandle<Element>, step: DiscoveryStep, 
 export async function discoverPage(page: Page, input: unknown, options: { signal?: AbortSignal } = {}): Promise<DiscoveryReport> {
   const plan = parseDiscoveryPlan(input), limits = { ...defaults, ...plan.limits };
   const report: DiscoveryReport = {
-    schemaVersion: 2, artifactType: "page-discovery", reportId: "", plan,
+    schemaVersion: 3, artifactType: "page-discovery", reportId: "", plan,
     startedAt: new Date().toISOString(), finishedAt: "", status: "completed", scope: "specified-scenes-and-openers",
     snapshots: [], scenes: [], limitations: [
       "完成仅指指定计划；不代表应用全量发现、选项业务全集或测试通过。",
@@ -106,6 +128,11 @@ export async function discoverPage(page: Page, input: unknown, options: { signal
       "单元格显示文本与显式 DOM 业务值均为观察事实，正确性须使用独立预期断言。",
     ],
   };
+  if (plan.exploration) {
+    report.scope = 'bounded-entry-exploration';
+    report.exploration = { actions: 0, results: [] };
+    report.limitations.push('自动探索只覆盖当前可见、唯一且可识别的展示入口；未知按钮和危险动作不点击。主配方排除；删除须声明确认弹框且不确认。重放使用同一浏览器上下文，保留登录 Cookie；不会忽略 URL 参数。');
+  }
   const limitReached = () => report.snapshots.length >= limits.maxSnapshots;
   for (const scene of plan.scenes) {
     const result: SceneResult = { id: scene.id, status: "completed", completedSteps: 0 };
@@ -116,42 +143,7 @@ export async function discoverPage(page: Page, input: unknown, options: { signal
     const associations: DialogAssociation[] = [];
     let frame: Frame;
     const capture = async (afterStep: number, popup?: PopupLink) => {
-      const snapshot: DiscoverySnapshot = { id: `${scene.id}:${afterStep}`, sceneId: scene.id, afterStep, url: page.url(), controls: [], cells: [], dialogs: [], documents: [], associations: JSON.parse(JSON.stringify(associations)), warnings: [], truncated: false };
-      let visited = 0;
-      const visit = async (current: Frame, path: DomAddress[], scanScopes: DomAddress[], currentPopup?: PopupLink) => {
-        const context = { url: current.url(), framePath: path };
-        if (visited >= limits.maxFrames || path.length > limits.maxFrameDepth) {
-          snapshot.documents.push({ context, status: "limited", reason: "Frame 数量或深度预算不足" }); snapshot.truncated = true; return;
-        }
-        visited++;
-        try {
-          if (options.signal?.aborted) throw new Error("发现已取消");
-          await current.waitForLoadState("domcontentloaded", { timeout: limits.timeoutMs });
-          const settings: ScanOptions = {
-            maxControls: Math.max(0, limits.maxControls - snapshot.controls.length), maxCells: Math.max(0, limits.maxCells - snapshot.cells.length),
-            maxOptions: limits.maxOptions, maxTextLength: limits.maxTextLength, maxShadowDepth: limits.maxShadowDepth,
-            scopes: scanScopes, framePath: path, ...(currentPopup ? { popup: currentPopup } : {}),
-          };
-          const observed = await current.evaluate(scanDocument, settings);
-          snapshot.controls.push(...observed.controls); snapshot.cells.push(...observed.cells); snapshot.dialogs.push(...observed.dialogs);
-          snapshot.warnings.push(...observed.warnings.map(w => `${JSON.stringify(path)}：${w}`));
-          snapshot.truncated ||= observed.truncated;
-          snapshot.documents.push({ context: { ...context, url: observed.url }, status: "scanned" });
-          for (const address of observed.frames) {
-            const childPath = [...path, { selector: address.selector, shadowPath: address.shadowPath }];
-            let host: ElementHandle<Element> | null = null;
-            try {
-              host = await findElement(current, address);
-              const child = await host?.contentFrame();
-              if (!child) throw new Error("iframe 已脱离或无法取得 Frame");
-              await visit(child, childPath, [{ selector: "body" }]);
-            } catch (error) { snapshot.documents.push({ context: { url: "", framePath: childPath }, status: "unavailable", reason: String(error).slice(0, 600) }); }
-            finally { await host?.dispose(); }
-          }
-        } catch (error) { snapshot.documents.push({ context, status: "unavailable", reason: String(error).slice(0, 600) }); }
-      };
-      await visit(frame, framePath, scopes, popup);
-      report.snapshots.push(snapshot);
+      report.snapshots.push(await captureSnapshot(page, frame, scene, afterStep, framePath, scopes, associations, limits, options.signal, popup, plan.exploration ? plan.exploration.confirmationEntries ?? [] : undefined, plan.exploration));
     };
     try {
       if (framePath.length > limits.maxFrameDepth) throw new EntryBlocked("指定 Frame 路径超过深度预算");
@@ -163,6 +155,7 @@ export async function discoverPage(page: Page, input: unknown, options: { signal
       frame = await enterFrames(page.mainFrame(), framePath, limits.timeoutMs);
       await (await waitElement(frame, scene.ready, limits.timeoutMs)).dispose();
       if (options.signal?.aborted) { result.status = "cancelled"; result.reason = "发现已取消"; continue; }
+      if (plan.exploration) { const excluded = await pageExclusion(page, plan); if (excluded) throw new EntryBlocked(excluded); }
       await capture(0);
       for (const [index, step] of scene.steps.entries()) {
         if (options.signal?.aborted) { result.status = "cancelled"; result.reason = "发现已取消"; break; }
@@ -186,6 +179,10 @@ export async function discoverPage(page: Page, input: unknown, options: { signal
               }, parent)) { parentDialog = association.dialog; break; }
             } finally { await parent?.dispose(); }
           }
+          if (report.exploration) {
+            if (report.exploration.actions >= (plan.exploration?.maxActions ?? 100)) throw new EntryBlocked('动作预算耗尽');
+            report.exploration.actions++;
+          }
           await clickTarget(target, step, limits.timeoutMs);
           if (page.url() !== beforeUrl || frame.url() !== beforeFrameUrl) throw new EntryBlocked("展开动作引起页面或 Frame 导航，已停止该场景");
           expected = await waitElement(frame, step.expected, limits.timeoutMs);
@@ -203,9 +200,22 @@ export async function discoverPage(page: Page, input: unknown, options: { signal
       result.status = error instanceof EntryBlocked ? "blocked" : "failed";
       result.reason = error instanceof Error ? error.message.slice(0, 1200) : String(error);
     }
+    if (plan.exploration && result.status === 'completed' && !options.signal?.aborted) {
+      const initial = report.snapshots.at(-1)!;
+      try { await exploreEntries(page, scene, plan, report, initial, async () => {
+        const { exploration: _exploration, ...base } = plan;
+        const replay = await discoverPage(page, { ...base, scenes: [scene] }, options);
+        if (replay.scenes[0]?.status !== 'completed') throw new Error(`起点重放失败：${replay.scenes[0]?.reason ?? replay.status}`);
+        return replay.snapshots.at(-1)!;
+      }, options.signal); } catch (error) {
+        result.status = "failed"; result.reason = String(error).slice(0, 1200);
+      }
+    }
     if (options.signal?.aborted) { result.status = "cancelled"; result.reason = "发现已取消"; }
   }
-  report.status = report.scenes.some(s => s.status === "cancelled") ? "cancelled" : report.scenes.some(s => s.status !== "completed") || report.snapshots.some(s => s.truncated || s.documents.some(d => d.status !== "scanned")) ? "partial" : "completed";
+  report.status = report.scenes.some(s => s.status === "cancelled") ? "cancelled" : report.scenes.some(s => s.status !== "completed") || report.snapshots.some(s => s.truncated || s.unresolvedControls > 0 || s.documents.some(d => !["scanned", "excluded"].includes(d.status))) ? "partial" : "completed";
+  if (report.exploration?.results.some(r => r.status === 'cancelled')) report.status = 'cancelled';
+  else if (report.status === 'completed' && report.exploration?.results.some(r => !['explored', 'skipped'].includes(r.status))) report.status = 'partial';
   report.finishedAt = new Date().toISOString(); report.reportId = await fingerprintReport(report);
   return report;
 }

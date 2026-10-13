@@ -105,7 +105,8 @@ test('日期时间、区间、滑块、文件识别；滑块与数字输入合�
   for (const kind of ['datetime', 'time', 'date-range', 'color', 'slider', 'file']) assert.equal(controls.filter(c => c.kind === kind).length, 1);
   assert.equal(controls.length, 10);
   assert.equal(controls.find(c => c.kind === 'slider').currentValue, 60);
-  assert.equal(controls.find(c => c.kind === 'datetime').locator.basis, 'id');
+  assert.equal(controls.find(c => c.kind === 'datetime').locator.basis, 'relation');
+  assert.ok(controls.find(c => c.kind === 'datetime').locator.unique);
   assert.equal(controls.find(c => c.kind === 'file').currentValue, null);
 });
 
@@ -165,7 +166,7 @@ test('确认 CLI 导出正式模型和映射，原有输出不覆盖', () => {
 
 test('业务复选框、保存按钮均在点击前拦截，页面数据保持不变', async () => {
   for (const selector of ['[data-testid=checkbox-a]', '[data-testid=linkage-save]']) {
-    const result = await discoverPage(page, { schemaVersion: 2, id: 'forbidden', scenes: [{ id: 'guard', url: plan.scenes[1].url, ready: { selector: '[data-testid=checkbox-a]' }, steps: [{ kind: 'open-dialog', target: { selector }, expected: { selector: 'body' } }] }] });
+    const result = await discoverPage(page, { schemaVersion: 3, id: 'forbidden', scenes: [{ id: 'guard', url: plan.scenes[1].url, ready: { selector: '[data-testid=checkbox-a]' }, steps: [{ kind: 'open-dialog', target: { selector }, expected: { selector: 'body' } }] }] });
     assert.equal(result.scenes[0].status, 'blocked');
     assert.equal(result.scenes[0].completedSteps, 0);
     assert.equal(await page.locator('[data-testid=checkbox-a]').isChecked(), false);
@@ -181,14 +182,14 @@ test('快照预算、取消与错误定位不会冒充发现完成', async () =>
   const controller = new AbortController(); controller.abort();
   const cancelled = await discoverPage(page, plan, { signal: controller.signal });
   assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.snapshots.length, 0);
-  const broken = await discoverPage(page, { schemaVersion: 2, id: 'bad-locator', limits: { timeoutMs: 200 }, scenes: [{ ...plan.scenes[0], ready: { selector: '#does-not-exist' } }] });
+  const broken = await discoverPage(page, { schemaVersion: 3, id: 'bad-locator', limits: { timeoutMs: 200 }, scenes: [{ ...plan.scenes[0], ready: { selector: '#does-not-exist' } }] });
   assert.equal(broken.status, 'partial'); assert.equal(broken.scenes[0].status, 'failed');
 });
 
 test('计划格式拒绝任意动作、重复场景及失效预算', () => {
   assert.throws(() => parseDiscoveryPlan({ ...plan, scenes: [plan.scenes[0], plan.scenes[0]] }), /重复/);
   for (const maxSnapshots of [0, -1, 1.5, 1001]) assert.throws(() => parseDiscoveryPlan({ ...plan, limits: { maxSnapshots } }));
-  assert.throws(() => parseDiscoveryPlan({ schemaVersion: 2, id: 'x', scenes: [{ ...plan.scenes[0], steps: [{ kind: 'fill', target: { selector: 'input' }, expected: { selector: 'input' } }] }] }), /不允许/);
+  assert.throws(() => parseDiscoveryPlan({ schemaVersion: 3, id: 'x', scenes: [{ ...plan.scenes[0], steps: [{ kind: 'fill', target: { selector: 'input' }, expected: { selector: 'input' } }] }] }), /不允许/);
 });
 
 // 补充原生组件与脱敏边界；主要验收仍是上面的真实 Vue 页面。

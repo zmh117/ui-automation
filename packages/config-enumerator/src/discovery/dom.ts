@@ -1,30 +1,40 @@
 import type { ElementHandle, Frame } from "playwright";
 import type { DomAddress } from "./types.js";
 
-/** 序列化到目标 Frame；每段 CSS 限制在自己的 Document/ShadowRoot 内。 */
-export function resolveDomElement(address: DomAddress): Element | null {
-  let root: Document | ShadowRoot = document;
-  for (const selector of address.shadowPath ?? []) {
-    const hosts: NodeListOf<Element> = root.querySelectorAll(selector);
-    if (hosts.length > 1) throw new Error(`Shadow 宿主定位不唯一：${selector}`);
-    if (!hosts[0]?.shadowRoot) return null;
-    root = hosts[0].shadowRoot;
+import { checkDomVisibility, resolveDomElement } from "./scan.js";
+export { resolveDomElement } from "./scan.js";
+
+/** 子文档不能自行判断跨源外层入口的隐藏状态，由 Playwright 检查实际宿主。 */
+async function visibleFramePath(frame: Frame, deadline?: number): Promise<boolean> {
+  const path: Frame[] = [];
+  for (let child = frame; child.parentFrame(); child = child.parentFrame()!) path.unshift(child);
+  for (const child of path) {
+    const host = await child.frameElement() as ElementHandle<Element>, parent = child.parentFrame()!;
+    try {
+      if (deadline === undefined) {
+        if (!await parent.evaluate(checkDomVisibility, { visibility: host })) return false;
+      } else {
+        const ready = await parent.waitForFunction(checkDomVisibility, { visibility: host }, { timeout: Math.max(1, deadline - Date.now()) });
+        await ready.dispose();
+      }
+    } finally { await host.dispose(); }
   }
-  const matches = root.querySelectorAll(address.selector);
-  if (matches.length > 1) throw new Error(`根内定位不唯一：${address.selector}`);
-  return matches[0] ?? null;
+  return true;
 }
 
 export async function findElement(frame: Frame, address: DomAddress): Promise<ElementHandle<Element> | null> {
-  const handle = await frame.evaluateHandle(resolveDomElement, address);
+  if (!await visibleFramePath(frame)) return null;
+  const handle = await frame.evaluateHandle(resolveDomElement, { resolve: address });
   const element = handle.asElement() as ElementHandle<Element> | null;
   if (!element) await handle.dispose();
   return element;
 }
 export async function waitElement(frame: Frame, address: DomAddress, timeout: number): Promise<ElementHandle<Element>> {
-  const handle = await frame.waitForFunction(resolveDomElement, address, { timeout });
+  const deadline = Date.now() + timeout;
+  await visibleFramePath(frame, deadline);
+  const handle = await frame.waitForFunction(resolveDomElement, { resolve: address }, { timeout: Math.max(1, deadline - Date.now()) });
   const element = handle.asElement() as ElementHandle<Element>;
-  try { await element.waitForElementState("visible", { timeout }); }
+  try { await element.waitForElementState("visible", { timeout: Math.max(1, deadline - Date.now()) }); }
   catch (error) { await element.dispose(); throw error; }
   return element;
 }

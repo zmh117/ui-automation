@@ -6,14 +6,14 @@ import { discoverPage, parseDiscoveryPlan, createDiscoveryDraft, createReviewTem
 async function main() {
   const args = process.argv.slice(2);
   if (!args.length || args.length === 1 && args[0] === "--help") {
-    console.log("用法：config-discover --plan <计划.json> --out <新目录> [--channel chrome|chromium|msedge] [--headed]\n只扫描和执行指定展开入口，不选择业务选项或保存。退出码：0 指定计划完成，2 部分发现，130 取消，1 错误。");
+    console.log("用法：config-discover --plan <计划.json> --out <新目录> [--channel chrome|chromium|msedge] [--headed] [--auto-explore] [--max-depth N] [--max-actions N]\n自动探索识别的展示入口；不填写、保存或确认删除。主配方排除。退出码：0 范围内完成，2 部分发现，130 取消，1 错误。");
     return;
   }
   const options = {};
   for (let i = 0; i < args.length; i++) {
     const name = args[i];
-    if (!["--plan", "--out", "--channel", "--headed"].includes(name) || Object.hasOwn(options, name)) throw new Error(`未知或重复参数：${name}`);
-    if (name === "--headed") { options[name] = true; continue; }
+    if (!["--plan", "--out", "--channel", "--headed", "--auto-explore", "--max-depth", "--max-actions"].includes(name) || Object.hasOwn(options, name)) throw new Error(`未知或重复参数：${name}`);
+    if (["--headed", "--auto-explore"].includes(name)) { options[name] = true; continue; }
     const value = args[++i];
     if (!value || value.startsWith("--")) throw new Error(`${name} 缺少值`);
     options[name] = value;
@@ -21,7 +21,13 @@ async function main() {
   if (!options["--plan"] || !options["--out"]) throw new Error("必须提供 --plan 和 --out");
   const channel = options["--channel"] ?? "chrome";
   if (!["chrome", "chromium", "msedge"].includes(channel)) throw new Error("不支持的浏览器 channel");
-  const plan = parseDiscoveryPlan(JSON.parse(readFileSync(resolve(options["--plan"]), "utf8")));
+  const input = JSON.parse(readFileSync(resolve(options["--plan"]), "utf8"));
+  if (options['--auto-explore']) input.exploration ??= {};
+  for (const [flag, key] of [['--max-depth', 'maxDepth'], ['--max-actions', 'maxActions']]) if (options[flag] !== undefined) {
+    if (!input.exploration) throw new Error(`${flag} 必须配合 --auto-explore 或计划中的 exploration`);
+    input.exploration[key] = Number(options[flag]);
+  }
+  const plan = parseDiscoveryPlan(input);
   const out = resolve(options["--out"]);
   if (existsSync(out)) throw new Error("输出目录已存在，不覆盖已有发现报告");
   let chromium;

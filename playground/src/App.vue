@@ -48,9 +48,11 @@ const pages = [
     tags: ["全部控件", "分区保存", "快速定位"],
   },
   { id: "discovery", title: "发现验证", caption: "弹层、列表与文档边界", description: "观察指定弹框、选项完整性、Frame、Shadow DOM 和单元格显示。", tags: ["跨边界发现", "选项证据", "显示采集"] },
+  { id: "entries", title: "入口探索", caption: "列表、表单与深层入口", description: "自动发现新增、编辑、详情及展示功能，记录路径和探索深度。", tags: ["自动探索", "深层路径", "不保存"] },
 ];
-const sections = pages.filter((page) => !["all", "discovery"].includes(page.id));
+const sections = pages.filter((page) => !["all", "discovery", "entries"].includes(page.id));
 const views: Record<string, ReturnType<typeof defineAsyncComponent>> = {
+  entries: defineAsyncComponent(() => import("./views/EntryDiscoveryView.vue")),
   discovery: defineAsyncComponent(() => import("./views/DiscoveryView.vue")),
   inputs: defineAsyncComponent(() => import("./views/InputsView.vue")),
   linkage: defineAsyncComponent(() => import("./views/LinkageView.vue")),
@@ -59,7 +61,7 @@ const views: Record<string, ReturnType<typeof defineAsyncComponent>> = {
   table: defineAsyncComponent(() => import("./views/TableView.vue")),
 };
 const getId = () => {
-  const id = location.hash.replace(/^#\/?/, "");
+  const id = location.hash.replace(/^#\/?/, "").split("?")[0];
   return pages.some((p) => p.id === id) ? id : "inputs";
 };
 const active = ref(getId());
@@ -173,11 +175,11 @@ async function reset() {
           <div class="tag-list">
             <span v-for="tag in meta.tags" :key="tag">{{ tag }}</span>
           </div>
-          <span class="save-note">{{ active === 'discovery' ? '仅用于发现验证 · 不保存配置' : '手动保存 · 刷新后保留' }}</span>
+          <span class="save-note">{{ ['discovery', 'entries'].includes(active) ? '仅用于发现验证 · 不保存配置' : '手动保存 · 刷新后保留' }}</span>
         </div>
-        <component v-if="active === 'discovery'" :is="views.discovery" />
+        <component v-if="['discovery', 'entries'].includes(active)" :is="views[active]" />
         <ComponentWorkspace
-          v-show="active !== 'discovery'"
+          v-show="!['discovery', 'entries'].includes(active)"
           :key="resetEpoch"
           :active="active"
           :sections="sections"

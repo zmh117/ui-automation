@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>现场结构脱敏复现</title>
+<style>section{padding:12px;border:1px solid #aaa;margin:8px}.ivu-form-item{padding:6px}.md-select{display:inline-block;padding:3px;border:1px solid}label{display:inline-block;margin:4px}input{min-height:20px}button{min-height:25px}</style>
+<body>
+<section role="region" aria-label="变量筛选">
+  <div class="ivu-form-item" label="分组"><label class="ivu-form-item-label">分组</label><div class="ivu-form-item-content"><div class="md-select" data-case="filter-group"><div class="md-select-input"><div class="ivu-select"><input placeholder="请选择" readonly><input style="opacity:0;width:0" aria-hidden="true"><input type="hidden" value="internal"></div></div></div></div></div>
+  <div class="ivu-form-item"><label class="ivu-form-item-label">工序描述</label><div class="ivu-form-item-content"><input placeholder="请输入" data-case="description"></div></div>
+  <div class="ivu-page-options-elevator"><span>跳至</span><input type="text" data-case="page-filter"><span>页</span></div>
+  <button type="button" data-case="search-filter"><span>查找</span></button>
+  <button type="button" data-case="unnamed-filter"><svg width="12" height="12"></svg></button>
+</section>
+<section role="dialog" aria-label="变量编辑">
+  <div class="ivu-form-item" label="分组"><label class="ivu-form-item-label">分组</label><div class="ivu-form-item-content"><div class="md-select" data-case="dialog-group"><div class="md-select-input"><div class="ivu-select"><input placeholder="请选择" readonly><input type="hidden"></div></div></div></div></div>
+  <div class="ivu-page-options-elevator"><span>跳至</span><input type="text" data-case="page-dialog"><span>页</span></div>
+  <button type="button" data-case="search-dialog">查找</button>
+</section>
+<section role="region" aria-label="编码设置">
+  <div class="ivu-radio-group" data-case="radio-group"><label class="ivu-radio-wrapper"><input type="radio" name="format" value="date" checked style="opacity:0">日期（YYYY-MM-dd）</label><label class="ivu-radio-wrapper"><input type="radio" name="format" value="custom" style="opacity:0">自定义</label><div class="ivu-form-item"><div class="md-input"><input type="text" data-case="custom-format"></div></div></div>
+  <label class="ivu-checkbox-wrapper" data-case="checkbox"><span role="checkbox" aria-checked="true"><input type="checkbox" checked style="opacity:0"></span>启用自动编码</label>
+</section>
+<section role="region" aria-label="按子节点识别"><div class="ivu-select" data-case="child-anchor"><input name="productionLine" readonly><input type="hidden"></div></section>
+<section role="region" aria-label="兄弟锚点"><span aria-label="自定义规则">规则</span><input type="text" data-case="sibling-input"></section>
+<section role="region" aria-label="真实独立子输入"><div role="button" aria-label="复合编辑" data-case="parent-action"><input name="independent" data-case="independent-input"></div></section>
+<section role="region" aria-label="不可区分"><input data-case="unknown-a"><input data-case="unknown-b"></section>
+<section role="region" aria-label="动态编号"><input id="el-id-1234" data-case="dynamic-a"><input id="el-id-5678" data-case="dynamic-b"></section>
+<section role="dialog" aria-label="旧弹框" hidden><div class="ivu-form-item" label="分组"><input placeholder="请选择"></div><button>查找</button></section>
+<section role="region" aria-label="开放组件"><div title="开放根" data-case="shadow-host"></div></section>
+</body></html>

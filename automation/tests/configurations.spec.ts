@@ -473,10 +473,11 @@ for (const mode of modes) {
         const before = await l.snapshot();
         if (kind === "dates") {
           if (v.raw.length) {
-            const inputs = l.root.locator(".el-date-editor--daterange input");
-            await inputs.nth(0).fill(v.raw[0]);
-            await inputs.nth(1).fill(v.raw[1]);
-            await inputs.nth(1).press("Enter");
+            const range = l.root.locator(".el-date-editor--daterange");
+            await range.getByPlaceholder("开始日期", { exact: true }).fill(v.raw[0]);
+            const end = range.getByPlaceholder("结束日期", { exact: true });
+            await end.fill(v.raw[1]);
+            await end.press("Enter");
           }
         } else {
           const input = l.root.locator(
@@ -608,9 +609,7 @@ for (const mode of modes) {
       await l.field(`row-code-${id}`).fill(v.raw);
       await l.field("table-save").click();
       await expect(l.row("row-001")).toBeVisible();
-      await expect(l.root.getByRole("alert").first()).toContainText(
-        "物料编码重复",
-      );
+      await expect(l.root.getByRole("alert").filter({ hasText: "物料编码重复" })).not.toHaveCount(0);
       await l.unchanged(before);
     },
   );

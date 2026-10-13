@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 3,
+  "id": "playground-auto-entries",
+  "scenes": [{
+    "id": "entries", "url": "http://127.0.0.1:5173/#/entries",
+    "ready": { "selector": "section[aria-label=\"入口探索实验室\"]" },
+    "scope": { "selector": "section[aria-label=\"入口探索实验室\"]" },
+    "steps": []
+  }],
+  "exploration": {
+    "maxDepth": 4, "maxActions": 180, "settleMs": 300,
+    "excludeNames": ["主配方"], "excludeUrlIncludes": ["mode=recipe"],
+    "confirmationEntries": [{
+      "target": { "selector": "button[aria-label=\"删除物料 A\"]" },
+      "expected": { "selector": "[role=\"alertdialog\"][aria-label=\"删除确认\"]" }
+    }]
+  },
+  "limits": { "maxSnapshots": 70, "timeoutMs": 5000, "maxTextLength": 1500 }
+}

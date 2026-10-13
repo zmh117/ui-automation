@@ -326,24 +326,21 @@ for (const mode of modes) {
   behavior("extended", "calendar-time-panels-clear", async (l) => {
     const before = await l.snapshot();
     const range = l.root.locator(".el-date-editor--daterange");
-    await range.locator("input").nth(0).fill("2026-10-07");
-    await range.locator("input").nth(1).fill("2026-10-08");
-    await range.locator("input").nth(1).press("Enter");
-    await range.locator("input").nth(0).click();
+    const start = range.getByPlaceholder("开始日期", { exact: true });
+    const end = range.getByPlaceholder("结束日期", { exact: true });
+    await start.fill("2026-10-07");
+    await end.fill("2026-10-08");
+    await end.press("Enter");
+    await start.click();
     const calendar = l.page.locator(".el-date-range-picker:visible");
     await expect(
       calendar.getByRole("button", { name: "10 月", exact: true }),
     ).toBeVisible();
-    await calendar
-      .getByRole("grid")
-      .first()
-      .getByRole("gridcell", { name: "10", exact: true })
-      .click();
-    await calendar
-      .getByRole("grid")
-      .first()
-      .getByRole("gridcell", { name: "12", exact: true })
-      .click();
+    const october = calendar.locator(".el-date-range-picker__content").filter({
+      has: l.page.getByRole("button", { name: "10 月", exact: true }),
+    }).getByRole("grid");
+    await october.getByRole("gridcell", { name: "10", exact: true }).click();
+    await october.getByRole("gridcell", { name: "12", exact: true }).click();
     await l.root.locator("#reminder-time").click();
     await expect(l.page.locator(".el-time-panel:visible")).toBeVisible();
     await l.root.locator("#reminder-time").fill("12:34");
@@ -353,18 +350,12 @@ for (const mode of modes) {
     await l.root.locator("#reminder-time").click();
     const time = l.page.locator(".el-time-panel:visible");
     await expect(time).toBeVisible();
-    await time
-      .getByRole("list")
-      .nth(0)
-      .getByRole("listitem")
-      .filter({ hasText: /^13$/ })
-      .click();
-    await time
-      .getByRole("list")
-      .nth(1)
-      .getByRole("listitem")
-      .filter({ hasText: /^35$/ })
-      .click();
+    // 时间列没有区分时/分/秒的公开语义，用控件支持的键盘操作。
+    const reminder = l.root.getByLabel("提醒时间", { exact: true });
+    await reminder.press("ArrowDown");
+    await reminder.press("ArrowRight");
+    await reminder.press("ArrowDown");
+    await expect(reminder).toHaveValue("13:35");
     await time.getByRole("button", { name: "确定", exact: true }).click();
     const dt = l.root.locator("#planned-datetime");
     await dt.fill("2026-10-07 12:34:56");
@@ -374,13 +365,12 @@ for (const mode of modes) {
     await panel.getByRole("gridcell", { name: "8", exact: true }).click();
     await panel.getByRole("textbox", { name: "选择时间", exact: true }).click();
     await expect(time).toBeVisible();
-    for (const [index, value] of ["13", "35", "57"].entries())
-      await time
-        .getByRole("list")
-        .nth(index)
-        .getByRole("listitem")
-        .filter({ hasText: new RegExp(`^${value}$`) })
-        .click();
+    const clock = panel.getByRole("textbox", { name: "选择时间", exact: true });
+    await clock.fill("13:35:57");
+    await clock.press("Tab");
+    await expect(time).toBeHidden();
+    await expect(clock).toHaveValue("13:35:57");
+    await clock.click();
     await time.getByRole("button", { name: "确定", exact: true }).click();
     await expect(time).toBeHidden();
     await panel.getByRole("button", { name: "确定", exact: true }).click();
@@ -392,8 +382,9 @@ for (const mode of modes) {
     });
     await range.hover();
     await range.locator(".el-range__close-icon").click();
-    for (const input of [l.root.locator("#reminder-time"), dt]) {
-      const wrapper = input.locator("..").locator("..");
+    for (const id of ["reminder-time", "planned-datetime"]) {
+      const input = l.root.locator(`#${id}`);
+      const wrapper = l.root.locator(`.el-date-editor:has(input#${id})`);
       await wrapper.hover();
       await wrapper.locator(".clear-icon").click();
       await expect(input).toHaveValue("");

@@ -1,12 +1,13 @@
 import type { ConfigurationModel, JsonValue, Rule } from "../types.js";
 
-/** selector 只在所在根内匹配；shadowPath 按外到内列出开放 Shadow 宿主。 */
+/** selector 为稳定 CSS 或 anchor= 语义关系，仅匹配自身及祖先可见的节点。shadowPath 逐层列出开放宿主。 */
 export interface DomAddress { selector: string; shadowPath?: string[] }
 export interface DocumentContext { url: string; framePath: DomAddress[] }
 export interface LocatorEvidence extends DomAddress {
   shadowPath: string[];
-  basis: "test-id" | "id" | "radio-group" | "structure";
+  basis: "test-id" | "id" | "semantic" | "relation" | "radio-group" | "unresolved";
   unique: boolean;
+  reason?: string;
 }
 export interface OptionCoverage {
   status: "complete" | "partial" | "unknown";
@@ -29,6 +30,30 @@ export interface ObservedControl {
   attributes: Record<string, string>;
   options: ObservedOption[]; optionCoverage: OptionCoverage | null;
   notes: string[]; dialog: LocatorEvidence | null;
+  entry?: EntryEvidence;
+  row?: { locator: LocatorEvidence; key: string | null };
+}
+export interface EntryEvidence {
+  kind: "open-entry" | "activate-tab" | "open-dropdown" | "open-confirmation";
+  intent: "create" | "edit" | "view" | "expand" | "delete";
+  allowed: boolean; reason: string;
+  expected?: DomAddress;
+}
+export interface ConfirmationEntry { target: DomAddress; expected: DomAddress; framePath?: DomAddress[] }
+export interface ExplorationOptions {
+  maxDepth?: number; maxActions?: number; settleMs?: number;
+  excludeNames?: string[]; excludeUrlIncludes?: string[];
+  confirmationEntries?: ConfirmationEntry[];
+}
+export interface ExplorationHop {
+  label: string; kind: EntryEvidence["kind"]; target: DomAddress;
+  source: DocumentContext; pageUrl: string; expected?: DomAddress;
+  destination?: { kind: "dialog" | "inline" | "navigation" | "popup" | "dropdown" | "tab"; url: string; frameUrl: string; scope: DomAddress[] };
+}
+export interface ExplorationResult {
+  sceneId: string; path: ExplorationHop[]; depth: number;
+  status: "explored" | "skipped" | "blocked" | "limited" | "failed" | "cancelled";
+  reason?: string; snapshotId?: string;
 }
 export interface ObservedDialog { label: string; locator: LocatorEvidence; context: DocumentContext }
 export interface ObservedCell {
@@ -48,12 +73,16 @@ export interface ScanOptions {
   scopes: DomAddress[];
   framePath: DomAddress[];
   popup?: PopupLink;
+  includeRegions?: boolean;
+  confirmationEntries?: ConfirmationEntry[];
 }
 /** 一次文档扫描，frames 交由 Playwright 协调器进入。 */
 export interface PageObservation {
   url: string; controls: ObservedControl[]; cells: ObservedCell[];
   dialogs: ObservedDialog[]; frames: LocatorEvidence[];
-  warnings: string[]; truncated: boolean;
+  warnings: string[]; truncated: boolean; unresolvedControls: number;
+  pageLabels?: string[];
+  regions?: { label: string; kind: string; locator: LocatorEvidence; context: DocumentContext; displayText: string }[];
 }
 export interface DiscoveryStep {
   kind: "open-dropdown" | "activate-tab" | "open-dialog";
@@ -65,7 +94,8 @@ export interface DiscoveryScene {
   steps: DiscoveryStep[];
 }
 export interface DiscoveryPlan {
-  schemaVersion: 2; id: string; scenes: DiscoveryScene[];
+  schemaVersion: 3; id: string; scenes: DiscoveryScene[];
+  exploration?: ExplorationOptions;
   limits?: {
     maxSnapshots?: number; maxControls?: number; maxOptions?: number;
     maxTextLength?: number; timeoutMs?: number; maxCells?: number;
@@ -79,12 +109,13 @@ export interface DialogAssociation {
 }
 export interface DocumentScan {
   context: DocumentContext;
-  status: "scanned" | "unavailable" | "limited";
+  status: "scanned" | "unavailable" | "limited" | "excluded";
   reason?: string;
 }
 export interface DiscoverySnapshot extends Omit<PageObservation, "frames"> {
   id: string; sceneId: string; afterStep: number;
   documents: DocumentScan[]; associations: DialogAssociation[];
+  path?: ExplorationHop[];
 }
 export interface SceneResult {
   id: string;
@@ -92,11 +123,12 @@ export interface SceneResult {
   completedSteps: number; reason?: string;
 }
 export interface DiscoveryReport {
-  schemaVersion: 2; artifactType: "page-discovery"; reportId: string;
+  schemaVersion: 3; artifactType: "page-discovery"; reportId: string;
   plan: DiscoveryPlan; startedAt: string; finishedAt: string;
   status: "completed" | "partial" | "cancelled";
-  scope: "specified-scenes-and-openers";
+  scope: "specified-scenes-and-openers" | "bounded-entry-exploration";
   snapshots: DiscoverySnapshot[]; scenes: SceneResult[]; limitations: string[];
+  exploration?: { actions: number; results: ExplorationResult[] };
 }
 export interface DraftField {
   sourceId: string; suggestedId: string; label: string; kind: string;
@@ -111,7 +143,7 @@ export interface DraftField {
   needsReview: string[];
 }
 export interface DiscoveryDraft {
-  schemaVersion: 2; artifactType: "unreviewed-configuration-draft";
+  schemaVersion: 3; artifactType: "unreviewed-configuration-draft";
   reportId: string; status: "needs-review"; fields: DraftField[];
   businessRules: "not-inferred";
 }
@@ -124,7 +156,7 @@ export interface ReviewInput {
 }
 export interface ReviewedModel {
   model: ConfigurationModel;
-  mapping: { schemaVersion: 2; reportId: string; fields: {
+  mapping: { schemaVersion: 3; reportId: string; fields: {
     id: string; sourceId: string; url: string; context: DocumentContext;
     locator: LocatorEvidence; observedIn: string[];
   }[] };

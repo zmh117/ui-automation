@@ -8,11 +8,11 @@ function unique(values: JsonValue[]): JsonValue[] {
 }
 
 export async function createDiscoveryDraft(report: DiscoveryReport): Promise<DiscoveryDraft> {
-  if (report.schemaVersion !== 2 || report.artifactType !== "page-discovery" || !report.reportId || report.reportId !== await fingerprintReport(report)) throw new Error("发现报告格式或指纹不匹配");
+  if (report.schemaVersion !== 3 || report.artifactType !== "page-discovery" || !report.reportId || report.reportId !== await fingerprintReport(report)) throw new Error("发现报告格式或指纹不匹配");
   const fields = new Map<string, DraftField>();
   for (const snapshot of report.snapshots) for (const control of snapshot.controls) {
-    if (control.category !== "field") continue;
-    const identity = canonical({ pageUrl: snapshot.url, context: JSON.stringify(control.context), key: control.key, kind: control.kind, weakLabel: control.locator.basis === "structure" ? control.label : "" });
+    if (control.category !== "field" || !control.locator.unique || !control.locator.selector) continue;
+    const identity = canonical({ pageUrl: snapshot.url, context: JSON.stringify(control.context), key: control.key, kind: control.kind });
     let field = fields.get(identity);
     if (!field) {
       const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity));
@@ -23,7 +23,7 @@ export async function createDiscoveryDraft(report: DiscoveryReport): Promise<Dis
         needsReview: ["确认字段是否属于本次测试范围", "确认有限值域及边界；当前观测不代表全部取值", "确认业务规则；本次未推导业务约束"] };
       fields.set(identity, field);
     }
-    field.observedIn.push(snapshot.id);
+    if (!field.observedIn.includes(snapshot.id)) field.observedIn.push(snapshot.id);
     field.observations.push({ snapshotId: snapshot.id, currentValue: cloneJson(control.currentValue), valueKnown: control.valueKnown, multiple: control.multiple, disabled: control.disabled, readOnly: control.readOnly, required: control.required, attributes: cloneJson(control.attributes), optionCoverage: cloneJson(control.optionCoverage) });
     field.needsReview = [...new Set([...field.needsReview, ...control.notes])];
     if (control.optionCoverage) field.needsReview.push(`选项集合 ${control.optionCoverage.status}：${control.optionCoverage.reasons.join("；")}；必须确认业务全集来源`);
@@ -50,7 +50,7 @@ export async function createDiscoveryDraft(report: DiscoveryReport): Promise<Dis
   const idCounts = new Map<string, number>();
   for (const field of result) idCounts.set(field.suggestedId, (idCounts.get(field.suggestedId) ?? 0) + 1);
   for (const field of result) if (idCounts.get(field.suggestedId)! > 1) field.suggestedId = field.sourceId;
-  return { schemaVersion: 2, artifactType: "unreviewed-configuration-draft", reportId: report.reportId, status: "needs-review", fields: result, businessRules: "not-inferred" };
+  return { schemaVersion: 3, artifactType: "unreviewed-configuration-draft", reportId: report.reportId, status: "needs-review", fields: result, businessRules: "not-inferred" };
 }
 
 export function createReviewTemplate(draft: DiscoveryDraft): ReviewInput {
@@ -73,7 +73,7 @@ export async function compileReviewedModel(report: DiscoveryReport, input: unkno
   const sources = new Map(draft.fields.map((x) => [x.sourceId, x]));
   const seen = new Set<string>();
   const fields = [];
-  const mapping: ReviewedModel["mapping"] = { schemaVersion: 2, reportId: report.reportId, fields: [] };
+  const mapping: ReviewedModel["mapping"] = { schemaVersion: 3, reportId: report.reportId, fields: [] };
   for (const field of review.fields) {
     if (!field || typeof field !== "object" || Array.isArray(field)) throw new Error("确认字段必须是对象");
     for (const key of Object.keys(field)) if (!["sourceId", "include", "id", "values"].includes(key)) throw new Error(`未知确认字段属性：${key}`);
@@ -101,13 +101,22 @@ export function renderDiscoveryReport(report: DiscoveryReport, draft: DiscoveryD
   const associations = report.snapshots.flatMap(s => s.associations.filter(a => a.step === s.afterStep).map(a => `| ${clean(s.id)} | ${clean(a.label)} | ${clean(where(a.context))} | ${clean(JSON.stringify(a.opener))} | ${clean(JSON.stringify(a.dialog))} | ${clean(JSON.stringify(a.parentDialog))} | 隐藏→可见 |`));
   const cells = report.snapshots.flatMap(s => s.cells.map(c => `| ${clean(s.id)} | ${clean(where(c.context))} | ${clean(c.rowKey ?? c.rowIndex ?? "未知")} | ${clean(c.columnKey ?? (c.columnLabel || c.columnIndex))} | ${clean(c.displayText)} | ${c.valueKnown ? clean(JSON.stringify(c.businessValue)) : "未知"} | ${c.displayTruncated ? "是" : "否"} |`));
   const documents = report.snapshots.flatMap(s => s.documents.map(d => `| ${clean(s.id)} | ${clean(where(d.context))} | ${d.status} | ${clean(d.reason ?? "—")} |`));
+  const unresolved = report.snapshots.flatMap(s => s.controls.filter(c => !c.locator.unique).map(c =>
+    `| ${clean(s.id)} | ${clean(c.label)} | ${clean(c.kind)} | ${clean(where(c.context))} | ${clean(c.locator.reason ?? "无法唯一回查目标")} |`));
+  const explorationStates = { explored: '已探索', skipped: '未点击', blocked: '已阻止', limited: '预算限制', failed: '失败', cancelled: '已取消' };
+  const paths = report.exploration?.results.map(r => `| ${clean(r.sceneId)} | ${r.depth} | ${clean(r.path.map(h => h.label).join(' → '))} | ${explorationStates[r.status]} | ${clean(r.snapshotId ?? '—')} | ${clean(r.reason ?? r.path.at(-1)?.destination?.kind ?? '—')} |`) ?? [];
+  const actions = report.snapshots.flatMap(s => s.controls.filter(c => c.entry).map(c => `| ${clean(s.id)} | ${clean(c.label)} | ${clean(c.row?.key ?? (c.row ? JSON.stringify(c.row.locator) : '页面'))} | ${c.locator.unique ? '唯一' : '未定位'} | ${clean(c.entry!.reason)} |`));
   return [
-    "# 页面配置发现报告", "", `版本：2；计划：${clean(report.plan.id)}；执行状态：${report.status}；快照：${report.snapshots.length}；字段：${draft.fields.length}。`,
+    "# 页面配置发现报告", "", `版本：3；计划：${clean(report.plan.id)}；执行状态：${report.status}；快照：${report.snapshots.length}；字段：${draft.fields.length}。`,
     "", "这是指定入口的观察报告，不是整个应用的完整模型，也不是测试通过报告。选项完整仅指当前 DOM/ARIA 声明集合，规则与业务值域仍须确认。", "", "## 入口执行", "",
     "| 场景 | 状态 | 已执行展开步骤 | 原因 |", "|---|---|---:|---|",
     ...report.scenes.map(s => `| ${clean(s.id)} | ${s.status} | ${s.completedSteps} | ${clean(s.reason ?? "—")} |`),
+    ...(report.exploration ? ['', '## 自动探索路径', '', `已尝试 ${report.exploration.actions} 次动作（包括前置步骤及路径重放）。深度是自动展开动作数；Frame 和 Shadow 深度单独限制。完整地址、来源和目标界面见 report.json 的 exploration.results[].path；path 之前先执行场景 steps。`, '', '| 场景 | 深度 | 操作路径 | 结果 | 快照 | 原因／界面类型 |', '|---|---:|---|---|---|---|', ...paths] : []),
+    '', '## 页面及列表操作入口', '', '每个快照中一个实际控件只记录一次；相同控件在不同路径下会有独立观察。行号仅供阅读，绝不用于操作定位。', '', '| 快照 | 按钮／入口 | 业务行 | 定位 | 识别及点击边界 |', '|---|---|---|---|---|', ...actions,
     "", "## 弹框关联", "", "| 快照 | 弹框名称 | 文档上下文 | 入口 | 目标弹框 | 父弹框 | 证据 |", "|---|---|---|---|---|---|---|", ...associations,
     "", "## 文档扫描", "", "| 快照 | Frame 路径及 URL | 状态 | 原因 |", "|---|---|---|---|", ...documents,
+    "", "## 未定位控件", "", `共 ${unresolved.length} 条观测（包含不同快照中的重复观测）。这些控件只保留页面事实，已排除在候选模型与正式映射之外。请增加区域、字段标签或稳定业务属性后重新发现；不会使用序号定位继续执行。`, "",
+    "| 快照 | 控件 | 类型 | 文档上下文 | 原因 |", "|---|---|---|---|---|", ...unresolved,
     "", "## 选项完整性", "", "| 快照 | 控件 | 上下文 | 状态 | 观测数 | 声明总数 | 来源 | 原因 |", "|---|---|---|---|---:|---:|---|---|", ...options,
     "", "## 单元格显示证据", "", "显示值不等于正确性结论；业务值仅来自显式 DOM JSON 声明，单元格不会自动成为配置因子。表、行、列及 Shadow 定位详见 report.json。", "",
     "| 快照 | 上下文 | 行 | 列 | 显示文本 | 显式业务值 | 显示截断 |", "|---|---|---|---|---|---|---|", ...cells,

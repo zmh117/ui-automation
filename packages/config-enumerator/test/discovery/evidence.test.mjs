@@ -123,7 +123,7 @@ test('Frame 和 Shadow 内指定入口只打开目标，正式模型映射保留
   review.modelId = 'frame-shadow-model';
   review.fields = [{ sourceId: source.sourceId, include: true, id: 'remark', values: ['测试值'] }];
   const { mapping } = await compileReviewedModel(report, review);
-  assert.equal(mapping.schemaVersion, 2);
+  assert.equal(mapping.schemaVersion, 3);
   assert.deepEqual(mapping.fields[0].context, source.context);
   assert.deepEqual(mapping.fields[0].locator, source.locator);
 });
@@ -146,7 +146,7 @@ test('显示文本与业务值分别采集，隐藏旧值不混入，单元格�
   for (const text of ['12.30 kg', '选项完整性', 'Frame', '分页选项', '变量配置']) assert.ok(md.includes(text), text);
 });
 
-test('记录的根内定位可以重新访问全部字段、弹框和单元格，包括结构定位', async () => {
+test('记录的根内定位可以重新访问全部字段、弹框和单元格，拒绝序号兜底', async () => {
   const current = await discoverPage(page, oneScene('teleport'));
   const s = current.snapshots.at(-1);
   const sources = [...s.controls, ...s.cells, ...s.dialogs];
@@ -190,7 +190,7 @@ test('Frame、Shadow、单元格与选项预算不足均显式标记，旧版计
   assert.equal(unavailable.status, 'partial');
   assert.equal(unavailable.snapshots[0].documents[0].status, 'unavailable');
   assert.match(unavailable.snapshots[0].documents[0].reason, /扫描区域不存在/);
-  assert.throws(() => parseDiscoveryPlan({ ...plan, schemaVersion: 1 }), /schemaVersion=2/);
+  assert.throws(() => parseDiscoveryPlan({ ...plan, schemaVersion: 1 }), /schemaVersion=3/);
   await assert.rejects(createDiscoveryDraft({ ...report, schemaVersion: 1 }), /格式|指纹/);
 });
 
