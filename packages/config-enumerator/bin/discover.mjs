@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { discoverPage, parseDiscoveryPlan, createDiscoveryDraft, createReviewTemplate, renderDiscoveryReport } from "../dist/discovery/index.js";
+import { discoverPage, parseDiscoveryPlan, createDiscoveryDraft, createReviewTemplate, renderDiscoveryReport, createUiElementModel, renderUiElementModel, createHandsontableReport } from "../dist/discovery/index.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -46,9 +46,12 @@ async function main() {
     const report = await discoverPage(page, plan, { signal: controller.signal });
     const draft = await createDiscoveryDraft(report);
     const review = createReviewTemplate(draft);
+    const uiModel = await createUiElementModel(report);
+    const handsontable = await createHandsontableReport(report);
     mkdirSync(out);
-    for (const [name, content] of [["report.json", report], ["draft-model.json", draft], ["review-template.json", review]]) writeFileSync(join(out, name), JSON.stringify(content, null, 2) + "\n", { flag: "wx" });
+    for (const [name, content] of [["report.json", report], ["draft-model.json", draft], ["review-template.json", review], ["ui-model.json", uiModel], ["handsontable.json", handsontable]]) writeFileSync(join(out, name), JSON.stringify(content, null, 2) + "\n", { flag: "wx" });
     writeFileSync(join(out, "report.md"), renderDiscoveryReport(report, draft), { flag: "wx" });
+    writeFileSync(join(out, "ui-model.md"), renderUiElementModel(uiModel), { flag: "wx" });
     console.log(JSON.stringify({ status: report.status, snapshots: report.snapshots.length, fields: draft.fields.length, scenes: report.scenes, reportId: report.reportId, out }, null, 2));
     process.exitCode = report.status === "completed" ? 0 : report.status === "cancelled" ? 130 : 2;
   } finally {

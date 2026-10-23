@@ -1,6 +1,7 @@
 import type { ElementHandle, Frame, Page } from "playwright";
 import { scanDocument } from "./scan.js";
 import { findElement } from "./dom.js";
+import { readHandsontable } from './handsontable.js';
 import type { DialogAssociation, DiscoveryScene, DiscoverySnapshot, DomAddress, PopupLink, ScanOptions, ConfirmationEntry, ExplorationOptions } from "./types.js";
 export const discoveryDefaults = { maxSnapshots: 60, maxControls: 300, maxOptions: 100, maxTextLength: 500, timeoutMs: 5000, maxCells: 300, maxFrames: 20, maxFrameDepth: 4, maxShadowDepth: 8 };
 export type DiscoveryLimits = typeof discoveryDefaults;
@@ -17,15 +18,31 @@ export async function captureSnapshot(page: Page, frame: Frame, scene: Discovery
       if (signal?.aborted) throw new Error("发现已取消");
       await current.waitForLoadState("domcontentloaded", { timeout: limits.timeoutMs });
       const settings: ScanOptions = {
-        maxControls: Math.max(0, limits.maxControls - snapshot.controls.length), maxCells: Math.max(0, limits.maxCells - snapshot.cells.length),
+        maxControls: Math.max(0, limits.maxControls - snapshot.controls.length), maxCells: Math.max(0, limits.maxCells - snapshot.cells.length - (snapshot.handsontables ?? []).reduce((n, t) => n + t.coverage.inspectedCells, 0)),
         maxOptions: limits.maxOptions, maxTextLength: limits.maxTextLength, maxShadowDepth: limits.maxShadowDepth,
-        scopes: scanScopes, framePath: path, ...(confirmationEntries ? { confirmationEntries, includeRegions: true } : {}), ...(currentPopup ? { popup: currentPopup } : {}),
+        scopes: scanScopes, framePath: path, includeRegions: true, includeRegionText: !!exploration, ...(confirmationEntries ? { confirmationEntries } : {}), ...(currentPopup ? { popup: currentPopup } : {}),
       };
       const observed = await current.evaluate(scanDocument, settings);
       if (exploration && (observed.pageLabels?.some(label => ['主配方', ...(exploration.excludeNames ?? [])].some(name => label.includes(name))) || exploration.excludeUrlIncludes?.some(part => observed.url.includes(part)))) {
         snapshot.documents.push({ context, status: 'excluded', reason: '文档命中排除名称或 URL 规则' }); return;
       }
       snapshot.controls.push(...observed.controls); snapshot.cells.push(...observed.cells); snapshot.dialogs.push(...observed.dialogs);
+      for (const target of observed.handsontableTargets ?? []) {
+        snapshot.handsontables ??= [];
+        try {
+          if (signal?.aborted) throw new Error('发现已取消');
+          if (!target.locator.unique) throw new Error('Handsontable 缺少唯一可见外层定位');
+          const remaining = Math.max(0, limits.maxCells - snapshot.cells.length - snapshot.handsontables.reduce((n, t) => n + t.coverage.inspectedCells, 0));
+          const reading = await readHandsontable(current, target.locator, { maxCells: remaining, maxTextLength: limits.maxTextLength });
+          snapshot.handsontables.push({ ...target, ...reading });
+          snapshot.truncated ||= reading.coverage.truncated;
+        } catch (error) {
+          const reason = String(error).slice(0, 600);
+          snapshot.handsontables.push({ ...target, status: 'unavailable', cells: [], elapsedMs: 0,
+            coverage: { scope: 'rendered-dom', totalCells: null, allDataCovered: false, renderedDataCells: 0, inspectedCells: 0, observedCells: 0, skippedHiddenCells: 0, truncated: true, reasons: [reason] } });
+          snapshot.warnings.push(reason); snapshot.truncated = true;
+        }
+      }
       snapshot.regions!.push(...(observed.regions ?? []));
       snapshot.pageLabels!.push(...(observed.pageLabels ?? []));
       snapshot.warnings.push(...observed.warnings.map(w => `${JSON.stringify(path)}：${w}`));

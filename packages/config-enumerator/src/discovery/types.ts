@@ -1,4 +1,5 @@
 import type { ConfigurationModel, JsonValue, Rule } from "../types.js";
+import type { HandsontableTarget, HandsontableObservation } from './handsontable.js';
 
 /** selector 为稳定 CSS 或 anchor= 语义关系，仅匹配自身及祖先可见的节点。shadowPath 逐层列出开放宿主。 */
 export interface DomAddress { selector: string; shadowPath?: string[] }
@@ -19,6 +20,16 @@ export interface OptionCoverage {
 export interface ObservedOption {
   label: string; value: JsonValue; valueKnown: boolean;
   disabled: boolean; selected: boolean;
+  locator?: LocatorEvidence;
+}
+/** 真实 DOM 祖先，按外到内排列；key 仅在当前文档扫描中标识未定位对象。 */
+export interface ObservedContainer {
+  key: string; kind: "form" | "dialog" | "table" | "row" | "region" | "panel";
+  label: string; locator: LocatorEvidence;
+}
+export interface ObservedPopup {
+  key: string; locator: LocatorEvidence;
+  basis: "aria" | "explicit-step" | "test-id-contract";
 }
 export interface ObservedControl {
   key: string; context: DocumentContext;
@@ -30,6 +41,10 @@ export interface ObservedControl {
   attributes: Record<string, string>;
   options: ObservedOption[]; optionCoverage: OptionCoverage | null;
   notes: string[]; dialog: LocatorEvidence | null;
+  containers?: ObservedContainer[];
+  popups?: ObservedPopup[];
+  /** 已知组合控件内的实际输入/触发节点，用于关联展开步骤；并非额外配置因子。 */
+  targets?: LocatorEvidence[];
   entry?: EntryEvidence;
   row?: { locator: LocatorEvidence; key: string | null };
 }
@@ -55,7 +70,7 @@ export interface ExplorationResult {
   status: "explored" | "skipped" | "blocked" | "limited" | "failed" | "cancelled";
   reason?: string; snapshotId?: string;
 }
-export interface ObservedDialog { label: string; locator: LocatorEvidence; context: DocumentContext }
+export interface ObservedDialog { label: string; locator: LocatorEvidence; context: DocumentContext; containers?: ObservedContainer[] }
 export interface ObservedCell {
   key: string; context: DocumentContext; locator: LocatorEvidence;
   table: LocatorEvidence; row: LocatorEvidence;
@@ -65,6 +80,7 @@ export interface ObservedCell {
   businessValue: JsonValue; valueKnown: boolean;
   valueSource: "explicit-dom-json" | "unknown";
   notes: string[];
+  containers?: ObservedContainer[];
 }
 export interface PopupLink { opener: DomAddress; popup: DomAddress }
 export interface ScanOptions {
@@ -74,6 +90,8 @@ export interface ScanOptions {
   framePath: DomAddress[];
   popup?: PopupLink;
   includeRegions?: boolean;
+  /** 只有探索界面变化需要区域全文；结构建模不采集整片重复文本。 */
+  includeRegionText?: boolean;
   confirmationEntries?: ConfirmationEntry[];
 }
 /** 一次文档扫描，frames 交由 Playwright 协调器进入。 */
@@ -82,7 +100,10 @@ export interface PageObservation {
   dialogs: ObservedDialog[]; frames: LocatorEvidence[];
   warnings: string[]; truncated: boolean; unresolvedControls: number;
   pageLabels?: string[];
-  regions?: { label: string; kind: string; locator: LocatorEvidence; context: DocumentContext; displayText: string }[];
+  /** 扫描入口交给专用读取器；目标不代表单元格已读取。 */
+  handsontableTargets?: HandsontableTarget[];
+  handsontables?: HandsontableObservation[];
+  regions?: { label: string; kind: string; locator: LocatorEvidence; context: DocumentContext; displayText: string; containers?: ObservedContainer[] }[];
 }
 export interface DiscoveryStep {
   kind: "open-dropdown" | "activate-tab" | "open-dialog";

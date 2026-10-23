@@ -1,4 +1,4 @@
-import type { LocatorEvidence, ObservedControl, ObservedOption, ObservedCell, OptionCoverage, PageObservation, ScanOptions, DomAddress, EntryEvidence } from "./types.js";
+import type { LocatorEvidence, ObservedControl, ObservedOption, ObservedCell, ObservedContainer, ObservedPopup, OptionCoverage, PageObservation, ScanOptions, DomAddress, EntryEvidence } from "./types.js";
 import type { JsonValue } from "../types.js";
 
 /** 同一个自包含浏览器函数供扫描和解析使用，避免两套选择器语义。 */
@@ -254,6 +254,34 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     const near = element.closest("label") ?? element.closest(formSelector)?.querySelector("label,.ivu-form-item-label,.el-form-item__label,legend");
     return text(near?.textContent || element.getAttribute("placeholder") || element.getAttribute("title") || element.textContent || element.getAttribute("name") || element.tagName);
   };
+  const dialogSelector = '[role="dialog"],[role="alertdialog"],dialog,.ivu-modal,.ivu-drawer-content';
+  const isHotRoot = (el: Element) => el.matches('.handsontable') && Array.from(el.children).some(c => c.matches('.ht_master'));
+  const hotRoot = (el: Element): Element | null => { for (let n: Element | null = el; n; n = parentOf(n)) if (isHotRoot(n)) return n; return null; };
+  const tableSelector = '.ivu-table-wrapper,.vxe-table';
+  const containerKind = (el: Element): ObservedContainer['kind'] | null => {
+    if (isHotRoot(el)) return 'table';
+    if (hotRoot(el) && el.matches('table,tr,[role="row"]')) return null;
+    if (el.matches(dialogSelector)) return 'dialog';
+    if (el.matches('form,.ivu-form,.el-form')) return 'form';
+    if (el.matches(tableSelector)) return 'table';
+    if (el.matches('table,[role="grid"],[role="table"],[role="treegrid"]') && !closest(parentOf(el) ?? el, tableSelector)) return 'table';
+    if (el.matches('tr,[role="row"]')) return 'row';
+    if (el.matches('[role="listbox"],[role="menu"],.ivu-select-dropdown,.md-down,.el-select-dropdown')) return 'panel';
+    return el.matches('[role="region"],section[aria-label],[role="tabpanel"],fieldset') ? 'region' : null;
+  };
+  const containerCache = new WeakMap<Element, ObservedContainer[]>();
+  const containers = (el: Element): ObservedContainer[] => {
+    const known = containerCache.get(el); if (known) return known;
+    const result: ObservedContainer[] = [];
+    for (let parent = parentOf(el); parent; parent = parentOf(parent)) {
+      const kind = containerKind(parent);
+      if (!kind || !visible(parent)) continue;
+      const hint = locator(parent);
+      // 容器名称不拼接其全部表单值、整表数据或敏感输入。
+      result.unshift({ key: identity(hint, parent), kind, label: text(accessibleName(parent) || parent.getAttribute('data-testid') || kind), locator: hint });
+    }
+    containerCache.set(el, result); return result;
+  };
   const disabled = (element: Element) => element.matches(":disabled") || closest(element, '[aria-disabled="true"],[inert]') !== null;
   const scopeRoots = settings.scopes.map((address, i) => {
     if ((address.shadowPath?.length ?? 0) > settings.maxShadowDepth) throw new Error("指定 Shadow 扫描区域超过深度预算");
@@ -311,7 +339,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     const action = ["button", "link", "menuitem", "submit", "reset", "tab"].includes(kind);
     let hint: LocatorEvidence = locator(element);
     const attributes: Record<string, string> = {};
-    for (const name of ["type", "name", "min", "max", "step", "minlength", "maxlength", "pattern", "inputmode", "placeholder", "accept", "aria-haspopup", "aria-controls", "aria-expanded", "aria-selected", "aria-multiselectable", "href", "target"]) {
+    for (const name of ["data-testid", "type", "name", "min", "max", "step", "minlength", "maxlength", "pattern", "inputmode", "placeholder", "accept", "aria-haspopup", "aria-controls", "aria-expanded", "aria-selected", "aria-multiselectable", "href", "target"]) {
       const value = element.getAttribute(name) ?? input?.getAttribute(name) ?? roleElement?.getAttribute(name);
       if (value !== null && value !== undefined) attributes[name] = text(value);
     }
@@ -320,6 +348,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     let options: ObservedOption[] = [];
     let optionCoverage: OptionCoverage | null = null;
     let optionNodes: Element[] = [], popupNodes: Element[] = [];
+    const popupEvidence = new Map<Element, ObservedPopup['basis']>();
     let multiple: boolean | null = element instanceof HTMLSelectElement ? element.multiple : ["combobox", "cascader"].includes(kind) ? null : false;
     if (roleElement?.hasAttribute("aria-multiselectable")) multiple = roleElement.getAttribute("aria-multiselectable") === "true";
     let fieldLabel = label(element);
@@ -350,7 +379,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
       options = radios.map((x) => {
         const native = nativeFor(x);
         const value = native ? native.getAttribute('value') : x.getAttribute('data-value') ?? x.getAttribute('value');
-        return { label: label(x), value, valueKnown: value !== null, selected: native ? native.checked : x.getAttribute('aria-checked') === 'true', disabled: disabled(x) || !!native && disabled(native) };
+        return { label: label(x), value, valueKnown: value !== null, selected: native ? native.checked : x.getAttribute('aria-checked') === 'true', disabled: disabled(x) || !!native && disabled(native), locator: locator(x) };
       });
       const selected = options.find((x) => x.selected);
       currentValue = selected?.value ?? null;
@@ -370,24 +399,39 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
       const popupRoots = new Set<Element>();
       for (const owner of owners) for (const id of `${owner.getAttribute("aria-controls") ?? ""} ${owner.getAttribute("aria-owns") ?? ""}`.trim().split(/\s+/)) {
         const popup = rootOf(owner).querySelector(attr("id", id));
-        if (popup && visible(popup)) popupRoots.add(popup);
+        if (popup && visible(popup)) { popupRoots.add(popup); popupEvidence.set(popup, 'aria'); }
       }
       if (settings.popup) {
         const opener = resolveAddress(settings.popup.opener);
         const popup = resolveAddress(settings.popup.popup);
-        if (opener && popup && visible(popup) && (contains(element, opener) || contains(opener, element))) popupRoots.add(popup);
+        if (opener && popup && visible(popup) && (contains(element, opener) || contains(opener, element))) { popupRoots.add(popup); popupEvidence.set(popup, 'explicit-step'); }
+      }
+      // EBR/JTH src/libs/test-id.js 的明确约定：输入 base、触发器 base-trigger、所属浮层 base-panel。
+      // 仅限已识别的 md/iView 组件；不按任意名称前缀猜关系，也不读取 Vue 私有状态。
+      if (!popupRoots.size && element.matches('.ivu-select,.ivu-cascader,.md-select,.md-select-input,.md-select-checkbox')) {
+        const bases = new Set([element, ...Array.from(element.querySelectorAll('input[data-testid],[data-testid$="-trigger"]'))]
+          .filter(visible).map(node => node.getAttribute('data-testid')?.replace(/-trigger$/, '')).filter((id): id is string => !!id));
+        const matches = new Set<Element>();
+        for (const base of bases) {
+          const candidates = query(rootOf(element), attr('data-testid', base + '-panel'));
+          const inputs = query(rootOf(element), attr('data-testid', base));
+          const owners = inputs.length ? inputs : query(rootOf(element), attr('data-testid', base + '-trigger'));
+          if (candidates.length === 1 && owners.length === 1 && contains(element, owners[0]!)) matches.add(candidates[0]!);
+        }
+        if (matches.size === 1) { const popup = [...matches][0]!; popupRoots.add(popup); popupEvidence.set(popup, 'test-id-contract'); }
+        else if (matches.size > 1) notes.push('组件 test-id 对应多个面板，未建立归属关系');
       }
       const optionElements = new Set<Element>();
       for (const popup of popupRoots) {
         if (popup.hasAttribute("aria-multiselectable")) multiple = popup.getAttribute("aria-multiselectable") === "true";
         const selectDropdown = popup.closest('.el-select-dropdown');
         if (selectDropdown) multiple = selectDropdown.classList.contains('is-multiple');
-        for (const option of deepQuery(popup, '[role="option"],[role="menuitem"],[role="menuitemcheckbox"],[role="treeitem"],.el-cascader-node')) if (visible(option)) optionElements.add(option);
+        for (const option of deepQuery(popup, '[role="option"],[role="menuitem"],[role="menuitemcheckbox"],[role="treeitem"],.el-cascader-node,.ivu-select-item:not(.select-all),ul.md-down-ul > li')) if (visible(option)) optionElements.add(option);
       }
       optionNodes = Array.from(optionElements); popupNodes = Array.from(popupRoots);
       options = optionNodes.map((x) => {
         const value = x.getAttribute("data-value") ?? x.getAttribute("value");
-        return { label: text(x.textContent), value, valueKnown: value !== null, selected: x.getAttribute("aria-selected") === "true" || x.getAttribute("aria-checked") === "true", disabled: disabled(x) };
+        return { label: text(x.textContent), value, valueKnown: value !== null, selected: x.getAttribute("aria-selected") === "true" || x.getAttribute("aria-checked") === "true", disabled: disabled(x), locator: locator(x) };
       });
       // 页面显示文本不能冒充组件 v-model 的业务值。
       currentValue = element.matches(".el-select") ? text(element.textContent) : input?.value ?? text(element.textContent);
@@ -471,25 +515,31 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     controls.push({ key, context, optionCoverage, category: action ? "action" : "field", kind, label: fieldLabel, locator: hint, currentValue, valueKnown,
       disabled: kind === 'radio-group' ? options.every((option) => option.disabled) : disabled(element) || !!input && disabled(input), readOnly: input?.hasAttribute("readonly") ?? false,
       required: element.getAttribute("aria-required") === "true" || input?.hasAttribute("required") === true,
-      multiple, attributes, options, notes, ...(entry ? { entry } : {}), ...(actionRow ? { row: { locator: locator(actionRow), key: actionRow.getAttribute('data-row-key') } } : {}), dialog: closest(element, '[role="dialog"],[role="alertdialog"],dialog') ? locator(closest(element, '[role="dialog"],[role="alertdialog"],dialog')!) : null });
+      multiple, attributes, options, notes, containers: containers(element),
+      targets: element.matches(widgetSelector) ? Array.from(element.querySelectorAll('input:not([type="hidden"]),textarea,.ivu-select-selection,.ivu-select-arrow,.ivu-input-icon,.el-select__wrapper')).filter(visible).map(locator).filter(l => l.unique) : [],
+      popups: [...popupEvidence].map(([node, basis]) => { const address = locator(node); return { key: identity(address, node), locator: address, basis }; }),
+      ...(entry ? { entry } : {}), ...(actionRow ? { row: { locator: locator(actionRow), key: actionRow.getAttribute('data-row-key') } } : {}), dialog: closest(element, dialogSelector) ? locator(closest(element, dialogSelector)!) : null });
   }
   const scoped = (query: string) => [...new Set(scopeRoots.flatMap(root => [...(root.matches(query) ? [root] : []), ...deepQuery(root, query)]))].filter(el => visible(el) && !closest(el, '[data-discovery-ignore="true"]'));
-  const dialogs = scoped('[role="dialog"],[role="alertdialog"],dialog').map(el => ({ label: label(el), locator: locator(el), context }));
-  const regionNodes = settings.includeRegions ? scoped('form,[role="region"],section[aria-label],[role="tabpanel"],[role="menu"],[role="listbox"],details,.el-drawer,.ivu-drawer') : [];
+  const dialogs = scoped(dialogSelector).map(el => ({ label: label(el), locator: locator(el), context, containers: containers(el) }));
+  const regionNodes = settings.includeRegions ? scoped('form,.ivu-form,.el-form,[role="region"],section[aria-label],[role="tabpanel"],[role="menu"],[role="listbox"],details,.el-drawer,.ivu-drawer') : [];
   if (regionNodes.length > settings.maxControls) truncated = true;
-  const regions = regionNodes.slice(0, settings.maxControls).map(el => ({ label: label(el), kind: el.getAttribute('role') ?? el.tagName.toLowerCase(), locator: locator(el), context, displayText: text(visibleText(el)) }));
+  const regions = regionNodes.slice(0, settings.maxControls).map(el => ({ label: text(accessibleName(el) || el.getAttribute('data-testid') || containerKind(el) || el.tagName.toLowerCase()), kind: el.getAttribute('role') ?? (containerKind(el) === 'form' ? 'form' : el.tagName.toLowerCase()), locator: locator(el), context, displayText: settings.includeRegionText === false ? '' : text(visibleText(el)), containers: containers(el) }));
   const frames = scoped("iframe").map(locator);
-  const cellNodes = scoped('td,th,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]');
+  const hotRoots = scoped('.handsontable').filter(isHotRoot);
+  if (hotRoots.length > settings.maxControls) { truncated = true; warnings.push('Handsontable 数量超过容器预算'); }
+  const handsontableTargets = hotRoots.slice(0, settings.maxControls).map(el => ({ key: identity(locator(el), el), locator: locator(el), context, containers: containers(el) }));
+  const cellNodes = scoped('td,th,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]').filter(el => !hotRoot(el));
   const cells: ObservedCell[] = [];
   if (cellNodes.length > settings.maxCells) { truncated = true; warnings.push(`单元格数量超过上限 ${settings.maxCells}`); }
   for (const cell of cellNodes.slice(0, settings.maxCells)) {
-    const table = closest(cell, 'table,[role="grid"],[role="table"],[role="treegrid"]');
+    const table = closest(cell, tableSelector) ?? closest(cell, 'table,[role="grid"],[role="table"],[role="treegrid"]');
     const row = closest(cell, 'tr,[role="row"]');
     if (!table || !row) continue;
     const siblings = Array.from(row.querySelectorAll('td,th,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]')).filter(el => closest(el, 'tr,[role="row"]') === row);
     const declaredIndex = Number(cell.getAttribute("aria-colindex"));
     const columnIndex = Number.isInteger(declaredIndex) && declaredIndex > 0 ? declaredIndex : siblings.slice(0, siblings.indexOf(cell)).reduce((n, el) => n + (Number(el.getAttribute("colspan")) || 1), 1);
-    const headers = Array.from(table.querySelectorAll('thead th,[role="columnheader"]')).filter(el => closest(el, 'table,[role="grid"],[role="table"],[role="treegrid"]') === table);
+    const headers = Array.from(table.querySelectorAll('thead th,[role="columnheader"]')).filter(el => (closest(el, tableSelector) ?? closest(el, 'table,[role="grid"],[role="table"],[role="treegrid"]')) === table);
     const header = headers.find((el, i) => (Number(el.getAttribute("aria-colindex")) || i + 1) === columnIndex);
     const columnLabel = text(header instanceof HTMLElement ? header.innerText : header?.textContent);
     const fullText = (cell instanceof HTMLElement ? cell.innerText : cell.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -514,9 +564,9 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
       rowKey: row.getAttribute("data-row-key"), rowIndex,
       columnKey: cell.getAttribute("data-column-key"), columnIndex, columnLabel,
       displayText: text(fullText), displayTruncated, businessValue, valueKnown,
-      valueSource: valueKnown ? "explicit-dom-json" : "unknown", notes });
+      valueSource: valueKnown ? "explicit-dom-json" : "unknown", notes, containers: containers(cell) });
   }
-  return { url: location.href, controls, cells, dialogs, frames, regions, pageLabels: [text(document.title), ...scoped('h1,h2,[role="heading"]').map(el => text(visibleText(el)))], warnings: [...new Set(warnings)], truncated, unresolvedControls: controls.filter(c => !c.locator.unique).length };
+  return { url: location.href, controls, cells, dialogs, frames, regions, handsontableTargets, pageLabels: [text(document.title), ...scoped('h1,h2,[role="heading"]').map(el => text(visibleText(el)))], warnings: [...new Set(warnings)], truncated, unresolvedControls: controls.filter(c => !c.locator.unique).length };
 }
 
 // 类型化入口共享同一个函数体，Playwright 序列化后也不依赖模块闭包。

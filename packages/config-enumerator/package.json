@@ -8,12 +8,33 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./discovery": { "types": "./dist/discovery/index.d.ts", "import": "./dist/discovery/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./discovery": {
+      "types": "./dist/discovery/index.d.ts",
+      "import": "./dist/discovery/index.js"
+    }
   },
-  "bin": { "config-enumerate": "./bin/enumerate.mjs", "config-discover": "./bin/discover.mjs", "config-review": "./bin/review.mjs" },
-  "files": ["dist", "bin", "examples", "README.md", "DISCOVERY.md", "VERIFICATION.md"],
-  "engines": { "node": ">=20.19.0" },
+  "bin": {
+    "config-enumerate": "./bin/enumerate.mjs",
+    "config-discover": "./bin/discover.mjs",
+    "config-review": "./bin/review.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "examples",
+    "README.md",
+    "DISCOVERY.md",
+    "UI-MODEL.md",
+    "HANDSONTABLE.md",
+    "VERIFICATION.md"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs",
@@ -21,9 +42,20 @@
     "discover": "node bin/discover.mjs",
     "review": "node bin/review.mjs",
     "test:discovery": "npm run build && node --test test/discovery/*.test.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:handsontable": "npm run build && node --test test/discovery/handsontable.test.mjs"
   },
-  "peerDependencies": { "playwright": ">=1.63.0 <2" },
-  "peerDependenciesMeta": { "playwright": { "optional": true } },
-  "devDependencies": { "typescript": "5.9.3", "playwright": "1.63.0" }
+  "peerDependencies": {
+    "playwright": ">=1.63.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "handsontable-pro": "6.2.3",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3"
+  }
 }

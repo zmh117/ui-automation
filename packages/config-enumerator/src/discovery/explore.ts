@@ -157,7 +157,7 @@ export async function exploreEntries(rootPage: Page, scene: DiscoveryScene, plan
           const expected = await findElement(currentFrame, hop.expected);
           const observed = await findElement(currentFrame, scopes[0]!);
           try {
-            if (!expected || !observed || !await expected.evaluate((el, actual) => el === actual && el.matches('dialog,[role="dialog"],[role="alertdialog"]'), observed)) throw new ExplorationStop('删除入口打开的不是配置的确认弹框');
+            if (!expected || !observed || !await expected.evaluate((el, actual) => el === actual && el.matches('dialog,[role="dialog"],[role="alertdialog"],.ivu-modal,.ivu-drawer-content'), observed)) throw new ExplorationStop('删除入口打开的不是配置的确认弹框');
           } finally { await expected?.dispose(); await observed?.dispose(); }
         }
         const fingerprint = JSON.stringify([kind, active.url(), currentFrame.url(), current.controls.map(c => [controlKey(c), c.kind, c.currentValue, c.options, c.attributes, c.disabled]), current.dialogs, current.regions]);

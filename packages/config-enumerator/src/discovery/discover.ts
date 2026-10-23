@@ -98,7 +98,12 @@ async function permittedTarget(frame: Frame, step: DiscoveryStep, timeout: numbe
       if (element instanceof HTMLButtonElement && element.form && element.type === "submit") return "禁止触发表单提交按钮";
       if (/保存|提交|删除|发布|重置|确认|确定|取消|\b(save|submit|delete|publish|reset|confirm|cancel|apply|ok)\b/i.test(label)) return "入口名称包含提交或修改动作，未点击";
       if (kind === "activate-tab") return role === "tab" ? null : "标签页入口必须具有 tab 角色";
-      if (kind === "open-dropdown") return role === "combobox" || element.matches(".el-select,.el-cascader,.el-date-editor") || element.querySelector('[role="combobox"]') || ["listbox", "tree", "menu", "dialog"].includes(element.getAttribute("aria-haspopup") ?? "") ? null : "未识别为下拉或日期选择入口";
+      if (kind === "open-dropdown") {
+        const owner = element.closest('.el-select,.el-cascader,.el-date-editor,.ivu-select,.ivu-cascader,.ivu-date-picker,.md-select,.md-select-input,.md-select-checkbox');
+        const trigger = owner && (owner === element || element.matches('input:not([type="hidden"]),.ivu-select-selection,.ivu-date-picker-rel,.ivu-cascader-rel')
+          || element.getAttribute('data-testid')?.endsWith('-trigger') && element.matches('.ivu-select-arrow,.ivu-input-icon'));
+        return role === 'combobox' || trigger || element.querySelector('[role="combobox"]') || ['listbox', 'tree', 'menu', 'dialog'].includes(element.getAttribute('aria-haspopup') ?? '') ? null : '未识别为下拉或日期选择入口';
+      }
       return element instanceof HTMLButtonElement || role === "button" ? null : "弹框入口必须为按钮";
     }, step.kind);
     if (reason) throw new EntryBlocked(reason);
@@ -187,7 +192,7 @@ export async function discoverPage(page: Page, input: unknown, options: { signal
           if (page.url() !== beforeUrl || frame.url() !== beforeFrameUrl) throw new EntryBlocked("展开动作引起页面或 Frame 导航，已停止该场景");
           expected = await waitElement(frame, step.expected, limits.timeoutMs);
           if (step.kind === "open-dialog") {
-            if (!await expected.evaluate(el => el.matches('[role="dialog"],dialog'))) throw new EntryBlocked("expected 必须精确指向弹框根，不能指向任意子控件");
+            if (!await expected.evaluate(el => el.matches('[role="dialog"],[role="alertdialog"],dialog,.ivu-modal,.ivu-drawer-content'))) throw new EntryBlocked("expected 必须精确指向弹框根，不能指向任意子控件");
             const label = await expected.evaluate(el => el.getAttribute("aria-label") || (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map(id => (el.getRootNode() as Document | ShadowRoot).querySelector(`[id="${CSS.escape(id)}"]`)?.textContent ?? "").join(" ").trim() || "未命名弹框");
             associations.push({ step: index + 1, label: label.slice(0, limits.maxTextLength), context: { url: frame.url(), framePath }, opener: step.target, dialog: step.expected, parentDialog, transition: "hidden-to-visible" });
             scopes.push(step.expected);

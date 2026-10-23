@@ -42,6 +42,10 @@ npm run discover -- --plan examples/discovery-evidence.json --out output/my-evid
 | `report.md` | 便于阅读的入口结果与候选字段清单 |
 | `draft-model.json` | 同一路由内合并的候选字段、逐状态观测、建议取值、待确认项 |
 | `review-template.json` | 默认不选任何字段，三个确认项均为 false |
+| `ui-model.json` | UI 元素身份、逐状态观察、包含/浮层/选项/已验证打开关系及证据 |
+| `ui-model.md` | 中文关系摘要与覆盖缺口 |
+
+元素关系模型支持查询控件属于哪个表单或记录行、入口打开了哪个界面，并与候选配置字段建立来源映射。它保留完整 URL、Frame、Shadow 上下文，不从同名或 test-id 的任意前缀推断关系，也不自动生成业务规则。实现依据、数据结构及 API 见 [UI 元素关系模型](UI-MODEL.md)。
 
 原六页计划仍覆盖基础输入、联动、扩展控件、弹框标签页、表格和全部组件页：12 个场景、20 个快照，默认禁用的内层变量入口保持未探索。
 
@@ -322,3 +326,5 @@ PLAYGROUND_URL=http://127.0.0.1:5174/ npm run test:discovery
 真实浏览器测试还覆盖弹框关联、选项完整性、跨源/嵌套 Frame、开放 Shadow、重复字段身份、定位复用、显示文本、错误关联和预算。无 ID 的脱敏现场结构还验证父子/兄弟定位、组件去重、节点重排、重渲染、歧义拒绝和未定位字段排除；不同路由默认分别保留，即使展示相同组件。验收结果见 [稳健定位验收](../../openspec/changes/robust-discovery-locators/verification.md)。
 
 语义和读取机制参考：[Playwright Locators](https://playwright.dev/docs/locators)、[Evaluating JavaScript](https://playwright.dev/docs/evaluating)。本模块生成结构化 DOM 记录，未将静态 ASCII 页面图作为运行输入。
+
+Handsontable 批记录网格支持零前端改动的只读采集，发现命令新增 `handsontable.json`；值、格式、合并、副本关系和断言示例见 [Handsontable 读取器](HANDSONTABLE.md)。仅覆盖当前渲染 DOM，原始业务值与跨任务身份不推断。
