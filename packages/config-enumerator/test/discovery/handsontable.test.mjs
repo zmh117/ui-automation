@@ -4,7 +4,8 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, join } from 'node:path';
 import { chromium } from 'playwright';
-import { readHandsontable, requireHandsontableCell, discoverPage, createHandsontableReport, createUiElementModel, fingerprintReport, scanDocument } from '../../dist/discovery/index.js';
+import { readHandsontable, requireHandsontableCell, discoverPage, createHandsontableReport, createUiElementModel, fingerprintReport, scanDocument, findElement } from '../../dist/discovery/index.js';
+import { captureSnapshot, discoveryDefaults } from '../../dist/discovery/observe.js';
 
 const assets = resolve('node_modules/handsontable-pro/dist');
 const js = readFileSync(join(assets, 'handsontable.full.min.js'), 'utf8');
@@ -12,6 +13,7 @@ const css = readFileSync(join(assets, 'handsontable.full.min.css'), 'utf8');
 const url = 'http://handsontable.test/';
 const address = { selector: '[data-testid="record-sheet"]' };
 const settings = { scopes: [{ selector: 'body' }], framePath: [], maxCells: 300, maxShadowDepth: 8, maxControls: 300, maxOptions: 30, maxTextLength: 500, includeRegions: true };
+const menuHTML = readFileSync(new URL('../fixtures/handsontable-context-menu.html', import.meta.url), 'utf8');
 let server, browser, context, page, owned = [];
 const processList = () => execFileSync('ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' }).trim().split('\n').map(line => {
   const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/); return m ? { pid: Number(m[1]), ppid: Number(m[2]), command: m[3] } : null;
@@ -177,4 +179,167 @@ test('Frame 与开放 Shadow 的入口和关系保持上下文，隐藏宿主被
   const scan = await page.evaluate(scanDocument, settings); assert.deepEqual(scan.handsontableTargets[0].locator.shadowPath, ['[id="host"]']);
   await page.locator('#host').evaluate(el => el.hidden = true);
   await assert.rejects(readHandsontable(page.mainFrame(), { ...address, shadowPath: ['#host'] }), /不可见/);
+});
+
+test('用户右键菜单 DOM：13 项操作、快捷键和子菜单，不当作批记录表格', async () => {
+  await page.locator('body').evaluate((el, html) => el.insertAdjacentHTML('beforeend', html), menuHTML);
+  const before = await state(), menuBefore = await page.locator('.htMenu').evaluate(el => el.outerHTML);
+  const scan = await page.evaluate(scanDocument, settings);
+  assert.equal(scan.handsontableTargets.length, 1, '右键菜单不能作为第二张批记录表格');
+  const items = scan.controls.filter(c => c.menu?.component === 'handsontable');
+  assert.deepEqual(items.map(c => c.label), ['复制', '剪切', '粘贴', '删除', '插入', '隐藏与取消隐藏', '对齐', '设置区域', '插入图片', '合并居中', '设置单元格格式', '设置标题行', '标题生效结束行']);
+  assert.equal(items.filter(c => c.menu.hasSubmenu).length, 5);
+  assert.equal(items.find(c => c.label === '设置单元格格式').menu.shortcut, 'Ctrl+1');
+  assert.equal(items.find(c => c.label === '合并居中').menu.shortcut, 'Ctrl+M');
+  assert.ok(items.every(c => c.kind === 'menuitem' && c.category === 'action' && c.locator.unique && !c.locator.selector.includes('ht_90e8')));
+  assert.ok(items.every(c => c.menu.ownerTable === null && c.menu.parentItem === null && c.entry?.allowed === false));
+  assert.equal(scan.cells.length, 0);
+  assert.equal(scan.regions.filter(r => r.kind === 'menu').length, 1);
+  for (const item of items) {
+    const handle = await findElement(page.mainFrame(), item.locator);
+    assert.ok(handle); assert.equal(await handle.evaluate(el => el.tagName), 'TD'); await handle.dispose();
+  }
+  assert.deepEqual(await state(), before);
+  assert.equal(await page.locator('.htMenu').evaluate(el => el.outerHTML), menuBefore, '只读采集不改菜单 DOM');
+  await assert.rejects(readHandsontable(page.mainFrame(), { selector: '.htMenu' }), /菜单|根节点/);
+});
+
+const menuItems = observation => observation.controls.filter(c => c.menu?.component === 'handsontable');
+const scanMenus = () => page.evaluate(scanDocument, settings);
+async function menuHandle(label, panelKind = 'context-menu') {
+  const matches = menuItems(await scanMenus()).filter(c => c.label === label && c.menu.panelKind === panelKind);
+  assert.equal(matches.length, 1); assert.equal(matches[0].locator.unique, true);
+  const handle = await findElement(page.mainFrame(), matches[0].locator); assert.ok(handle); return handle;
+}
+
+test('真实 HOT 菜单：关闭重开、嵌套子菜单与操作定位不依赖随机 ID', async () => {
+  await page.evaluate(() => {
+    window.menuCommands = [];
+    hot.updateSettings({ contextMenu: { items: {
+      copy: { name: '复制' },
+      separator: '---------',
+      paste: { name: '粘贴', disabled: true },
+      deletion: { name: '删除', submenu: { items: [
+        { key: 'deletion:row', name: '删除行', callback() { window.menuCommands.push('delete-row'); } },
+        { key: 'deletion:column', name: '删除列', callback() { window.menuCommands.push('delete-column'); } },
+      ] } },
+      format: { name: '<p><span>设置单元格格式</span><span style="float:right">Ctrl+1</span></p>', callback() { window.menuCommands.push('format'); } },
+    } } });
+  });
+  // 使用固定夹具中唯一文本单元格触发真实右键事件，不调用组件私有菜单方法。
+  const cell = page.locator('[data-testid="record-sheet"] .ht_master td').filter({ hasText: /^3:4$/ });
+  await cell.click({ button: 'right' });
+  await page.locator('.htMenu.htContextMenu').waitFor({ state: 'visible' });
+  const first = menuItems(await scanMenus());
+  assert.deepEqual(first.map(c => c.label), ['复制', '粘贴', '删除', '设置单元格格式']);
+  assert.equal(first.find(c => c.label === '粘贴').disabled, true);
+  const format = first.find(c => c.label === '设置单元格格式');
+  const deletion = await menuHandle('删除');
+  try { await deletion.hover(); } finally { await deletion.dispose(); }
+  await page.locator('.htMenu[class*="htContextMenuSub_"]').waitFor({ state: 'visible' });
+  const expanded = await scanMenus();
+  assert.deepEqual(menuItems(expanded).filter(c => c.menu.panelKind === 'submenu').map(c => c.label), ['删除行', '删除列']);
+  assert.ok(menuItems(expanded).every(c => !c.entry.allowed));
+  assert.equal(expanded.handsontableTargets.length, 1); assert.equal(expanded.cells.length, 0);
+  assert.deepEqual(await page.evaluate(() => window.menuCommands), []);
+  await page.mouse.click(850, 650);
+  assert.equal(menuItems(await scanMenus()).length, 0);
+  assert.equal(await findElement(page.mainFrame(), format.locator), null);
+  await cell.click({ button: 'right' });
+  await page.locator('.htMenu.htContextMenu:not([class*="htContextMenuSub_"])').waitFor({ state: 'visible' });
+  await page.locator('.htMenu.htContextMenu:not([class*="htContextMenuSub_"])').evaluate(el => { el.id = 'ht_0123456789abcdef'; });
+  const reopened = menuItems(await scanMenus()).find(c => c.label === '设置单元格格式');
+  assert.deepEqual(reopened.locator, format.locator);
+  const button = await findElement(page.mainFrame(), reopened.locator);
+  try { await button.click(); } finally { await button.dispose(); }
+  assert.deepEqual(await page.evaluate(() => window.menuCommands), ['format']);
+});
+
+test('菜单预算、分隔线、隐藏项、同名项和多个可见面板不会冒充唯一定位', async () => {
+  await page.locator('body').evaluate((el, html) => el.insertAdjacentHTML('beforeend', html), menuHTML);
+  const original = menuItems(await scanMenus()).find(c => c.label === '设置单元格格式');
+  await page.locator('.htMenu tbody').first().evaluate(el => {
+    el.insertAdjacentHTML('beforeend', '<tr><td class="htSeparator"><div class="htItemWrapper">---------</div></td></tr><tr hidden><td><div class="htItemWrapper">隐藏命令</div></td></tr><tr><td class="htDisabled"><div class="htItemWrapper">禁用命令</div></td></tr><tr><td class="htSelectionDisabled"><div class="htItemWrapper">不接受操作</div></td></tr>');
+  });
+  let scan = await scanMenus(), items = menuItems(scan);
+  assert.equal(items.length, 15);
+  assert.equal(items.find(c => c.label === '禁用命令').disabled, true);
+  assert.equal(items.find(c => c.label === '不接受操作').disabled, true);
+  const limited = await page.evaluate(scanDocument, { ...settings, scopes: [{ selector: '.htMenu' }], maxControls: 2, maxTextLength: 2 });
+  assert.equal(limited.truncated, true); assert.equal(menuItems(limited).length, 2);
+  const shortcutCut = await page.evaluate(scanDocument, { ...settings, maxTextLength: 3 });
+  assert.equal(shortcutCut.truncated, true);
+  await page.locator('.htMenu').evaluate(el => {
+    const duplicate = el.cloneNode(true); duplicate.id = 'ht_ffffffffffffffff';
+    duplicate.querySelectorAll('tr').forEach(row => { if (!row.textContent.includes('复制')) row.remove(); });
+    el.after(duplicate);
+  });
+  scan = await scanMenus();
+  assert.ok(menuItems(scan).every(c => !c.locator.unique));
+  await assert.rejects(findElement(page.mainFrame(), original.locator), /不唯一/);
+  await page.locator('#ht_ffffffffffffffff').evaluate(el => { el.hidden = true; });
+  assert.ok(menuItems(await scanMenus()).every(c => c.locator.unique));
+  await page.locator('#ht_90e8d3caeba1779c tbody').first().evaluate(el => {
+    const row = [...el.rows].find(row => row.textContent.includes('设置单元格格式')); el.append(row.cloneNode(true));
+  });
+  assert.ok(menuItems(await scanMenus()).filter(c => c.label === '设置单元格格式').every(c => !c.locator.unique));
+  await assert.rejects(findElement(page.mainFrame(), original.locator), /不唯一/);
+  await page.locator('#ht_90e8d3caeba1779c').evaluate(el => { el.style.opacity = '0'; });
+  assert.equal(menuItems(await scanMenus()).length, 0);
+  assert.equal(await findElement(page.mainFrame(), original.locator), null);
+});
+
+test('菜单 JSON 和包含关系贯通，Frame/Shadow 独立定位且不猜测表格归属', async () => {
+  await page.locator('body').evaluate((el, html) => el.insertAdjacentHTML('beforeend', html), menuHTML);
+  const scene = { id: 'menu', url, ready: address, steps: [] };
+  const snapshot = await captureSnapshot(page, page.mainFrame(), scene, 0, [], [{ selector: 'body' }], [], discoveryDefaults);
+  const report = { schemaVersion: 3, artifactType: 'page-discovery', reportId: '', plan: { schemaVersion: 3, id: 'menu', scenes: [scene] },
+    startedAt: '', finishedAt: '', status: 'completed', scope: 'specified-scenes-and-openers', snapshots: [snapshot], scenes: [{ id: 'menu', status: 'completed', completedSteps: 0 }], limitations: [] };
+  report.reportId = await fingerprintReport(report);
+  const json = await createHandsontableReport(report), model = await createUiElementModel(report);
+  assert.equal(json.snapshots[0].tables.length, 1); assert.equal(json.snapshots[0].menuItems.length, 13);
+  assert.equal(json.snapshots[0].truncated, false);
+  const commands = model.elements.filter(e => e.observations.some(o => o.state?.menu?.component === 'handsontable'));
+  assert.equal(commands.length, 13);
+  for (const command of commands) {
+    assert.ok(command.locatable);
+    const parent = model.relations.find(e => e.to === command.id && e.kind === 'contains');
+    assert.ok(model.elements.find(e => e.id === parent.from).kinds.includes('panel'));
+  }
+  assert.ok(!model.relations.some(e => ['opens', 'has-popup'].includes(e.kind)), '无动作或 DOM 证据时不猜父菜单或源表格');
+  const limited = structuredClone(report);
+  limited.snapshots[0].truncated = true; limited.snapshots[0].warnings.push('菜单数量达到预算');
+  limited.reportId = await fingerprintReport(limited);
+  const partial = await createHandsontableReport(limited);
+  assert.equal(partial.snapshots[0].truncated, true);
+  assert.ok(partial.snapshots[0].warnings.includes('菜单数量达到预算'));
+  if (process.env.HOT_TEST_OUTPUT) {
+    mkdirSync(process.env.HOT_TEST_OUTPUT, { recursive: true });
+    writeFileSync(join(process.env.HOT_TEST_OUTPUT, 'menu-handsontable.json'), JSON.stringify(json, null, 2));
+    writeFileSync(join(process.env.HOT_TEST_OUTPUT, 'menu-ui-model.json'), JSON.stringify(model, null, 2));
+  }
+  report.snapshots[0].controls.find(c => c.menu).label = 'tampered';
+  await assert.rejects(createHandsontableReport(report), /指纹/);
+  await page.locator('.htMenu').evaluate(el => el.remove());
+  await page.evaluate(({ html, css }) => {
+    const host = document.createElement('div'); host.id = 'menu-host'; document.body.append(host);
+    host.attachShadow({ mode: 'open' }).innerHTML = '<style>' + css + '</style>' + html;
+    const iframe = document.createElement('iframe'); iframe.id = 'menu-frame'; iframe.style.cssText = 'width:900px;height:700px'; document.body.append(iframe);
+  }, { html: menuHTML, css });
+  const shadowItems = menuItems(await scanMenus());
+  assert.equal(shadowItems.length, 13);
+  for (const item of shadowItems) {
+    assert.deepEqual(item.locator.shadowPath, ['[id="menu-host"]']);
+    const handle = await findElement(page.mainFrame(), item.locator); assert.ok(handle); await handle.dispose();
+  }
+  const child = page.frames().find(f => f.parentFrame());
+  await child.setContent('<style>' + css + '</style>' + menuHTML);
+  const childItems = menuItems(await child.evaluate(scanDocument, { ...settings, framePath: [{ selector: '#menu-frame' }] }));
+  assert.equal(childItems.length, 13);
+  assert.deepEqual(childItems[0].context.framePath, [{ selector: '#menu-frame', shadowPath: [] }]);
+  await page.locator('#menu-host').evaluate(el => { el.hidden = true; });
+  assert.equal(menuItems(await scanMenus()).length, 0);
+  assert.equal(await findElement(page.mainFrame(), shadowItems[0].locator), null);
+  await page.locator('#menu-frame').evaluate(el => { el.hidden = true; });
+  assert.equal(await findElement(child, childItems[0].locator), null);
 });

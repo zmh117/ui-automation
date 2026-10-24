@@ -64,6 +64,53 @@ npm run discover -- --plan path/to/plan.json --out output/new-discovery
 
 直接调用底层 `scanDocument` 只输出 `handsontableTargets` 入口；完整读取用 `discoverPage` 或 `readHandsontable`。`createHandsontableReport(report)` 校验指纹后生成独立 JSON。
 
+## 无 test ID 的右键菜单
+
+Handsontable 将右键菜单动态挂载到 `body`。它同样带有 `.handsontable/.ht_master/table/td`，但属于菜单，不是另一张批记录表格。读取器会排除 `.htMenu`，通用采集器将 `.htMenu.htContextMenu` 内主区域的菜单 TD 记录为 `category: "action"`、`kind: "menuitem"`。
+
+不需要修改 EBR/JTH 或给每个菜单项加 `data-testid`。`ht_90e8d3caeba1779c` 这样的随机 ID 不参与生成定位；定位采用当前可见菜单范围及精确显示名称，`Ctrl+1` 等独立右浮动快捷键单独记录，不混入“设置单元格格式”的名称。该适配针对已验证的 Handsontable 菜单结构；任意自定义快捷键布局不会被猜测拆分。
+
+已打开菜单的观察结果位于 `report.json` 的 `snapshots[].controls`，也导出到 `handsontable.json` 的 `snapshots[].menuItems`；快照保留 `truncated` 和 `warnings`，预算不足时不能把缺少项目当成菜单不存在。其中：
+
+| 字段 | 含义 |
+|---|---|
+| `label`、`locator` | 显示名称及可唯一回查的定位；同名项或多个同类可见面板导致歧义时 `unique: false` |
+| `disabled` | DOM 的禁用属性或菜单 `htDisabled/htSelectionDisabled` 状态 |
+| `menu.panelKind` | 主右键菜单 `context-menu` 或已展开子菜单 `submenu` |
+| `menu.hasSubmenu` | 当前项具有 `htSubmenu` 标记，不代表子菜单已经读取 |
+| `menu.shortcut` | 独立显示的快捷键；未识别时 `null` |
+| `menu.ownerTable`、`menu.parentItem` | `null`：这类 DOM 未提供源表格和父菜单项的可靠归属，不能从位置、高亮或随机 ID 猜测 |
+| `containers` | 菜单面板与操作的真实包含关系，进入 `ui-model.json`；布局 table/tr 不作为业务表格或记录行 |
+
+测试步骤负责进入正确表格、右键打开菜单，再扫描当前 DOM。例：
+
+```js
+import assert from 'node:assert/strict';
+import { scanDocument, findElement } from '@mes-ui/config-enumerator/discovery';
+
+// 前置：已按测试用例在目标表格/单元格打开右键菜单。
+const frame = page.mainFrame(); // iframe 内改用 enterFrames 返回的 Frame
+const observation = await frame.evaluate(scanDocument, {
+  scopes: [{ selector: 'body' }], framePath: [],
+  maxControls: 300, maxOptions: 100, maxTextLength: 500,
+  maxCells: 300, maxShadowDepth: 8, includeRegions: true,
+});
+assert.equal(observation.truncated, false);
+const matches = observation.controls.filter(c => c.menu?.component === 'handsontable'
+  && c.menu.panelKind === 'context-menu' && c.label === '设置单元格格式');
+assert.equal(matches.length, 1);
+assert.equal(matches[0].locator.unique, true);
+assert.equal(matches[0].disabled, false);
+const target = await findElement(frame, matches[0].locator);
+assert.ok(target);
+try {
+  // 只有用例明确要求打开格式设置时才点击；后续仍须断言预期弹窗和内容。
+  await target.click();
+} finally { await target.dispose(); }
+```
+
+菜单关闭后重新打开、切换表格、悬停展开子菜单后都应重新采集。分隔线、隐藏项和未展开子菜单不属于已观察操作。采集过程不右键、不悬停、不点击，也不自动执行删除、剪切、合并等命令；当前发现计划没有自动遍历右键菜单的动作。菜单文字不是内部命令键，菜单扫描也不证明执行结果正确，断言须由用例提供独立预期。
+
 ## 验证范围
 
 ```sh
@@ -72,5 +119,7 @@ node --test test/discovery/handsontable.test.mjs
 ```
 
 浏览器测试使用公开 npm 包 `handsontable-pro@6.2.3` 和本地固定数据，覆盖格式化文本、合并、固定副本、虚拟滚动、Frame/Shadow、预算、隐藏及只读行为。该旧版仅为开发测试依赖，不进入读取器运行时；其历史依赖的审计提示不通过升级业务前端来处理。
+
+菜单回归包含用户提供的原始 13 项菜单 DOM，以及真实 6.2.3 组件的右键、悬停子菜单、关闭重开和菜单点击；验证分隔线、禁用、重复名称/面板、随机 ID 变化、隐藏、预算、JSON 与包含关系。菜单点击仅执行夹具回调，不代表真实 MES 命令或后端业务验收。
 
 EBR 声明 `handsontable-pro@6.2.6`，公共 npm 可用版本最高为 6.2.3，本次证据不等于 6.2.6 或真实 MES 页面验收。模板/任务对应的业务预期及完整批记录验收仍需在实际测试环境执行。

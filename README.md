@@ -6,6 +6,7 @@
 - [七页 UI 自动执行：用例、命令与结果报告](automation/README.md)：使用已确认的分组全量模型实际操作页面，包含非法输入、保存刷新和失败证据。
 - [本地验收记录](playground/VERIFICATION.md)：构建及浏览器验证范围、截图和限制。
 - [MES UI 自动化测试方案](doc/MES_UI自动化测试方案.md)：现有整体设计。
+- [data-testid 设置规则](doc/data-testid设置规则.md)：命名、表格、单选／多选、公共组件和 transfer 浮层的标识与定位约定。
 
 ## 启动前端
 

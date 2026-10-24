@@ -3,3 +3,6 @@ dist/
 output/
 *.tgz
 现场使用/
+真实项目代码/EBR/
+真实项目代码/JTH/
+.playwright-cli

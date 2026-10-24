@@ -48,6 +48,12 @@ export interface ObservedControl {
   targets?: LocatorEvidence[];
   entry?: EntryEvidence;
   row?: { locator: LocatorEvidence; key: string | null };
+  /** 仅来自已展开的菜单 DOM；不把文字解释为内部命令或源表格身份。 */
+  menu?: {
+    component: 'handsontable'; panelKind: 'context-menu' | 'submenu';
+    hasSubmenu: boolean; shortcut: string | null;
+    ownerTable: null; parentItem: null;
+  };
 }
 export interface EntryEvidence {
   kind: "open-entry" | "activate-tab" | "open-dropdown" | "open-confirmation";

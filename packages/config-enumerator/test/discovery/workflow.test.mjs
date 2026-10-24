@@ -193,7 +193,7 @@ test('Frame 和开放 Shadow 保留作用域；隐藏宿主不能绕过检查', 
   await assert.rejects(readWorkflow(frame, address), /可见/);
 });
 
-test('真实公共组件原有 22 项回归，长前缀的 transfer 浮层仍归属正确且保持后缀合同', async () => {
+async function bootComponentFixture() {
   const fixture = readFileSync(join(sourceRoot, 'test-ids/fixture.html'), 'utf8');
   await context.route(url + '**', async route => {
     const path = new URL(route.request().url()).pathname;
@@ -211,6 +211,11 @@ test('真实公共组件原有 22 项回归，长前缀的 transfer 浮层仍归
     await route.fulfill({ contentType, body });
   });
   await page.goto(url);
+  await page.waitForFunction(() => window.fixture);
+}
+
+test('真实公共组件原有 22 项回归，长前缀的 transfer 浮层仍归属正确且保持后缀合同', async () => {
+  await bootComponentFixture();
   const checks = new Function('return (' + readFileSync(join(sourceRoot, 'test-ids/browser-check.js'), 'utf8') + ')')();
   assert.equal((await checks(page)).passed, 22);
   const bases = ['ebr-first-' + 'nested-'.repeat(30) + 'select-type', 'ebr-second-' + 'nested-'.repeat(30) + 'select-type', 'x'.repeat(111)];
@@ -228,4 +233,52 @@ test('真实公共组件原有 22 项回归，长前缀的 transfer 浮层仍归
     await page.getByTestId(id + '-option-1').click();
     assert.equal(await page.getByTestId(id).inputValue(), '一');
   }
+});
+
+test('真实 Excel 控件类型单选项按业务值唯一定位，排序过滤改名后稳定且实例隔离', async () => {
+  await bootComponentFixture();
+  const source = compiler.parseComponent(readFileSync(join(sourceRoot, 'EBR/src/view/excel/excel-modal/control.vue'), 'utf8')).template.content;
+  const template = source.match(/<MdRadioGroup\b[\s\S]*?<\/MdRadioGroup>/)?.[0];
+  assert.ok(template, '直接提取真实模板中的控件类型组');
+  await page.evaluate(({ template, pluginUrl }) => import(pluginUrl).then(async ({ compactTestId }) => {
+    const base = ['tabs-excel-tabs-excel', 'excel-ebr-excel', 'drawer-show-modal-excel-control-excel-control-value']
+      .reduce((scope, local) => compactTestId(scope + '-' + local), 'ebr-excel-tabs-excel-clone');
+    const Picker = { template, data: () => ({
+      showControl: Array.from({ length: 18 }, (_, value) => ({ value, label: '类型 ' + value })),
+      isOpenBol: false, tabName: '0', events: [],
+    }), methods: { tabClick(value) { this.events.push(value); } } };
+    const el = document.createElement('div'); document.body.prepend(el);
+    window.radioFixture = new Vue({ el, components: { Picker }, data: { base },
+      template: '<div><section id="picker-a"><Picker ref="first" :test-id-scope="base" /></section><section id="picker-b"><Picker ref="second" test-id-scope="ebr-other-record-control" /></section></div>',
+    });
+    await Vue.nextTick();
+  }), { template, pluginUrl });
+  await page.waitForFunction(() => document.querySelector('#picker-a input[data-testid]'));
+  const snapshot = async id => page.locator('#' + id + ' input[type="radio"]').evaluateAll(inputs => inputs.map(input => ({
+    id: input.getAttribute('data-testid'), label: input.closest('label').textContent.trim(), checked: input.checked,
+  })));
+  const initial = await snapshot('picker-a'), other = await snapshot('picker-b');
+  if (process.env.WORKFLOW_RADIO_EVIDENCE) writeFileSync(process.env.WORKFLOW_RADIO_EVIDENCE, JSON.stringify({ initial, other }, null, 2));
+  assert.equal(initial.length, 18);
+  assert.equal(new Set(initial.map(item => item.id)).size, 18, '不同类型的原生单选输入不能共用同一 testid');
+  assert.equal(new Set([...initial, ...other].map(item => item.id)).size, 36, '两份控件类型组不能串扰');
+  assert.ok(initial.every((item, value) => item.id.endsWith('-radio-' + value)));
+  assert.equal(await page.getByTestId(initial[17].id).isVisible(), false);
+  await page.getByTestId(initial[3].id).check();
+  assert.deepEqual(await page.evaluate(() => ({ selected: radioFixture.$refs.first.tabName, events: radioFixture.$refs.first.events, other: radioFixture.$refs.second.tabName })), { selected: '3', events: ['3'], other: '0' });
+  await page.evaluate(async () => {
+    const first = radioFixture.$refs.first;
+    first.showControl = first.showControl.filter(item => item.value !== 1).reverse().map(item => ({ ...item, label: 'Renamed ' + item.value }));
+    first.isOpenBol = true; await Vue.nextTick();
+  });
+  const updated = await snapshot('picker-a');
+  assert.equal(updated.length, 17);
+  for (const item of updated) assert.equal(item.id, initial[Number(item.label.replace('Renamed ', ''))].id);
+  assert.equal(await page.getByTestId(initial[1].id).count(), 0, '移除的类型不残留旧标识');
+  assert.equal(await page.getByTestId(initial[17].id).isVisible(), true);
+  await page.getByTestId(initial[0].id).check();
+  assert.equal(await page.evaluate(() => radioFixture.$refs.first.tabName), '0', '数值 0 也可正常定位选中');
+  const beforeReload = (await snapshot('picker-a')).map(item => item.id).sort();
+  await page.evaluate(async () => { const f = radioFixture.$refs.first; f.showControl = f.showControl.map(item => ({ ...item })); await Vue.nextTick(); });
+  assert.deepEqual((await snapshot('picker-a')).map(item => item.id).sort(), beforeReload);
 });

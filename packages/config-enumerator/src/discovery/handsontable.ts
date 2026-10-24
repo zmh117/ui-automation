@@ -50,7 +50,8 @@ export function readHandsontableDOM(root: Element, options: HandsontableReadOpti
   };
   const visible = (el: Element) => el.getClientRects().length > 0 && allowed(el);
   if (!visible(root)) throw new Error('Handsontable 根节点不存在或不可见');
-  const isRoot = (el: Element) => el.matches('.handsontable') && Array.from(el.children).some(c => c.matches('.ht_master'));
+  if (root.closest('.htMenu')) throw new Error('Handsontable 菜单不是批记录数据表格');
+  const isRoot = (el: Element) => el.matches('.handsontable') && !el.closest('.htMenu') && Array.from(el.children).some(c => c.matches('.ht_master'));
   if (!isRoot(root)) throw new Error('目标不是支持的 Handsontable 根节点（需要直属 ht_master）');
   const owner = (el: Element): Element | null => { for (let n: Element | null = el; n; n = parent(n)) if (isRoot(n)) return n; return null; };
   const reasons = new Set<string>(['只观察当前渲染 DOM；未加载任务、未渲染行列与隐藏区域不属于已验证范围', '标题与渲染位置仅用于当前快照，未验证稳定业务身份', '未读取原始业务值、数值格式配置或后端结果']);
@@ -187,6 +188,8 @@ export async function createHandsontableReport(report: DiscoveryReport) {
   if (report.schemaVersion !== 3 || report.artifactType !== 'page-discovery' || report.reportId !== await fingerprintReport(report)) throw new Error('发现报告格式或指纹不匹配');
   return { schemaVersion: 1 as const, artifactType: 'handsontable-observations' as const, reportId: report.reportId,
     expectedValues: 'not-inferred' as const,
-    snapshots: report.snapshots.map(s => ({ snapshotId: s.id, sceneId: s.sceneId, pageUrl: s.url, tables: s.handsontables ?? [] })),
+    snapshots: report.snapshots.map(s => ({ snapshotId: s.id, sceneId: s.sceneId, pageUrl: s.url, tables: s.handsontables ?? [],
+      truncated: s.truncated, warnings: s.warnings,
+      menuItems: s.controls.filter(c => c.menu?.component === 'handsontable') })),
   };
 }

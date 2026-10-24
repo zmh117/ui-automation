@@ -85,3 +85,12 @@
 发现 → 确认转换 → 枚举 CLI 均实际运行，完整输出 **16 条、9 合法、7 非法**；manifest 中 `exportComplete=true`、`execution=not-performed`。没有把非法组合写入页面或存储，也没有宣称执行了这些配置用例。
 
 包与练习站构建通过，练习站原有的 bundle 超过 500 kB 提示仍存在；`openspec validate --all --strict` 为 3/3 通过。复用方式、明确确认过程和 iframe/虚拟列表等限制见 [页面发现说明](DISCOVERY.md)。
+
+## 2026-10-24：Handsontable 无 test ID 右键菜单
+
+- 用户原始菜单 HTML 存为 `test/fixtures/handsontable-context-menu.html`。修复前本地复现：一个数据表加菜单被扫描为两个 Handsontable 表格；修复后只保留一个数据表，菜单的 13 个操作、5 个子菜单入口和 `Ctrl+M/Ctrl+1` 均可读取。
+- `node --test test/discovery/handsontable.test.mjs`：12/12 通过。除既有表格测试，新增原始 DOM、真实 6.2.3 右键/悬停/重开/夹具回调、禁用/分隔线/隐藏/歧义/预算、Frame/Shadow、JSON 与包含关系。最终补充 JSON 的截断和告警传递后，对该项单独重跑 1/1 通过。
+- `locators.test.mjs` + `visibility.test.mjs`：15/15 通过；`npm test`：31/31 通过；TypeScript 构建及 `openspec validate add-handsontable-reader --strict` 通过。
+- 采集器不修改 DOM，不访问 Vue/Handsontable 私有实例，不执行菜单操作；测试步骤显式在本地夹具右键、悬停和点击。源表格与父菜单关系没有可靠证据时保持未知，模型只建立真实菜单面板包含操作的关系。
+- 未修改 EBR/JTH 前端，未重新打包 src，未提交；用户已有修改保留。本次没有运行真实 MES 后端或命令，6.2.3 组件证据不等同 EBR 6.2.6 验收。
+- 证据在仓库根 `output/handsontable-menu-20261024/`：修复前后日志、`menu-handsontable.json`、`menu-ui-model.json` 与每次浏览器进程清理记录。各次已记录的本次测试进程剩余数均为 0。

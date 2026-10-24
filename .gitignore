@@ -19,7 +19,7 @@ output/*
 !output/playwright/
 
 # 现场副本：含真实 MES 会话元数据与登录截图，仅作本地只读证据
-现场使用/
+真实项目代码/
 
 # 本地环境与登录态（可能含账号、Cookie、Token）
 .env

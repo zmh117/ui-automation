@@ -26,6 +26,29 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
   };
   if ('visibility' in request) return visible(request.visibility);
   const visibleText = (el: Element) => normalize(el instanceof HTMLElement ? el.innerText : el.textContent);
+  const hotMenuSelector = '.htMenu.htContextMenu';
+  const hotItemSelector = `${hotMenuSelector} .ht_master td`;
+  const isHotItem = (el: Element) => el.matches(hotItemSelector) && !el.matches('.htSeparator') && !!el.querySelector('.htItemWrapper');
+  const hotMenuShape = (el: Element) => {
+    const sub = Array.from(el.classList).filter(c => c.startsWith('htContextMenuSub_'));
+    return hotMenuSelector + (sub.length ? sub.map(c => '.' + CSS.escape(c)).join('') : ':not([class*="htContextMenuSub_"])');
+  };
+  const menuContentCache = new WeakMap<Element, { label: string; shortcut: string | null }>();
+  const hotMenuContent = (el: Element) => {
+    const cached = menuContentCache.get(el); if (cached) return cached;
+    const wrapper = el.querySelector('.htItemWrapper');
+    const shortcuts: string[] = [];
+    const read = (node: Element): string => {
+      if (!visible(node) || node.matches('input,textarea,script,style')) return '';
+      const full = visibleText(node);
+      // EBR 菜单把快捷键放在独立、右浮动的 span；不按任意尾部数字拆名称。
+      if (node !== wrapper && node.children.length === 0 && getComputedStyle(node).float === 'right'
+        && /^(?:(?:Ctrl|Alt|Shift|Meta|Cmd|Command)\s*\+\s*)+\S+$/i.test(full)) { shortcuts.push(full); return ''; }
+      return Array.from(node.childNodes).map(child => child.nodeType === Node.TEXT_NODE ? child.textContent ?? '' : child instanceof Element ? read(child) : '').join(' ');
+    };
+    const result = { label: normalize(wrapper ? read(wrapper) : ''), shortcut: shortcuts.length ? shortcuts.join(' / ') : null };
+    menuContentCache.set(el, result); return result;
+  };
   const iconNames: Record<string, string> = { icon_xiugai: '修改', icon_bianji: '编辑', icon_edit: '编辑', icon_shanchu: '删除', icon_delete: '删除', icon_detail: '详情', icon_chakan: '查看' };
   const iconSelector = Object.keys(iconNames).map(c => 'i.' + c).join(',');
   const iconName = (el: Element) => {
@@ -33,6 +56,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     return names.size === 1 ? [...names][0]! : '';
   };
   const accessibleName = (el: Element): string => {
+    if (isHotItem(el)) return hotMenuContent(el).label;
     const labelled = (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean).map(id => rootOf(el).querySelector(attr('id', id))?.textContent ?? '').join(' ');
     if (normalize(labelled)) return normalize(labelled);
     if (el.hasAttribute('aria-label')) return normalize(el.getAttribute('aria-label'));
@@ -86,6 +110,9 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
         }
       }
       nodes = [...found];
+      if ('resolve' in request && nodes.length > 1 && nodes.every(n => n instanceof Element && n.matches(hotMenuSelector))) {
+        throw new Error('Handsontable 菜单面板不唯一，拒绝从多个面板中猜测目标');
+      }
     }
     const result = nodes as Element[]; cache.set(selector, result); return result;
   };
@@ -116,7 +143,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
   const checkboxSelector = '.el-checkbox,.el-switch,.ivu-checkbox-wrapper,.md-checkbox';
   const formSelector = '.el-form-item,.ivu-form-item,.md-form-item,.form-item,.field,fieldset';
   const classNames = [...widgetSelector.split(','), ...formSelector.split(','), ...groupSelector.split(','), ...radioSelector.split(','), ...checkboxSelector.split(','), '.ivu-page-options-elevator', '.leftTree', '.md-input'].filter(s => s.startsWith('.')).map(s => s.slice(1));
-  const dynamicId = (id: string) => /^(el-|ivu-|radix-|headlessui-|v-)|^(input|select|checkbox|radio|field)[_-]?\d+$|^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id);
+  const dynamicId = (id: string) => /^(el-|ivu-|radix-|headlessui-|v-)|^ht_[0-9a-f]+$|^(input|select|checkbox|radio|field)[_-]?\d+$|^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id);
   const shape = (el: Element) => {
     const tag = el.tagName.toLowerCase();
     const cls = classNames.find(c => el.classList.contains(c));
@@ -178,6 +205,19 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
       const hit = { selector, basis, unique: true }; localCache.set(el, hit); return hit;
     };
     if (el === document.body) { const hit = { selector: 'body', basis: 'semantic' as const, unique: true }; localCache.set(el, hit); return hit; }
+    if (el.matches(hotMenuSelector) || isHotItem(el)) {
+      const panel = el.matches(hotMenuSelector) ? el : el.closest(hotMenuSelector)!;
+      // 必须先有唯一可见面板；不靠菜单内某个偶然唯一的词推断它属于哪张表。
+      const panelSteps: Step[] = [{ axis: 'descendant', selector: hotMenuShape(panel) }];
+      const panels = query(root, encode(panelSteps));
+      const name = isHotItem(el) ? accessibleName(el) : '';
+      if (panels.length === 1 && panels[0] === panel && (el === panel || name && name.length <= 160)) {
+        const path = el === panel ? panelSteps : [...panelSteps, { axis: 'descendant' as const, selector: '.ht_master td', name }];
+        const hit = accept(path, el === panel ? 'semantic' : 'relation'); if (hit) return hit;
+      }
+      const missing = { selector: '', basis: 'unresolved' as const, unique: false, reason: 'Handsontable 菜单面板或精确名称不唯一，或名称为空/超长；未使用随机 ID 和序号' };
+      localCache.set(el, missing); return missing;
+    }
     const own = atoms(el);
     for (const steps of own) {
       const basis = steps[0]!.selector.startsWith('[data-testid=') ? 'test-id' : steps[0]!.selector.startsWith('[id=') ? 'id' : 'semantic';
@@ -232,6 +272,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     return JSON.stringify([framePath, hint.shadowPath, hint.unique ? hint.selector : { unresolvedObservation: unresolvedIds.get(element) }]);
   };
   const label = (element: Element): string => {
+    if (isHotItem(element)) return text(hotMenuContent(element).label);
     if (element.matches('button,a,summary,[role="button"],[role="menuitem"]') || element.matches(iconSelector)) {
       const actionName = accessibleName(element); if (actionName) return text(actionName);
     }
@@ -255,10 +296,12 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     return text(near?.textContent || element.getAttribute("placeholder") || element.getAttribute("title") || element.textContent || element.getAttribute("name") || element.tagName);
   };
   const dialogSelector = '[role="dialog"],[role="alertdialog"],dialog,.ivu-modal,.ivu-drawer-content';
-  const isHotRoot = (el: Element) => el.matches('.handsontable') && Array.from(el.children).some(c => c.matches('.ht_master'));
+  const isHotRoot = (el: Element) => el.matches('.handsontable') && !closest(el, '.htMenu') && Array.from(el.children).some(c => c.matches('.ht_master'));
   const hotRoot = (el: Element): Element | null => { for (let n: Element | null = el; n; n = parentOf(n)) if (isHotRoot(n)) return n; return null; };
   const tableSelector = '.ivu-table-wrapper,.vxe-table';
   const containerKind = (el: Element): ObservedContainer['kind'] | null => {
+    if (el.matches(hotMenuSelector)) return 'panel';
+    if (closest(el, '.htMenu') && el.matches('table,tr,[role="row"]')) return null;
     if (isHotRoot(el)) return 'table';
     if (hotRoot(el) && el.matches('table,tr,[role="row"]')) return null;
     if (el.matches(dialogSelector)) return 'dialog';
@@ -282,7 +325,8 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     }
     containerCache.set(el, result); return result;
   };
-  const disabled = (element: Element) => element.matches(":disabled") || closest(element, '[aria-disabled="true"],[inert]') !== null;
+  const disabled = (element: Element) => element.matches(":disabled") || closest(element, '[aria-disabled="true"],[inert]') !== null
+    || isHotItem(element) && element.matches('.htDisabled,.htSelectionDisabled');
   const scopeRoots = settings.scopes.map((address, i) => {
     if ((address.shadowPath?.length ?? 0) > settings.maxShadowDepth) throw new Error("指定 Shadow 扫描区域超过深度预算");
     let root: Element | null;
@@ -295,12 +339,13 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
   }).filter((root): root is Element => !!root && visible(root));
   // 模态弹框可能把原编辑器设为 inert/aria-hidden，仍应扫描已关联的可见弹框。
   if (!scopeRoots.length) throw new Error("扫描区域不可见：没有可读取的原区域或关联弹框");
-  const controlQuery = 'input:not([type="hidden"]),textarea,select,button,a,summary,[role="link"],[role="menuitem"],[role="checkbox"],[role="radio"],[role="switch"],[role="combobox"],[role="textbox"],[role="spinbutton"],[role="slider"],[role="tab"],[role="button"],[contenteditable="true"],' + iconSelector;
+  const controlQuery = 'input:not([type="hidden"]),textarea,select,button,a,summary,[role="link"],[role="menuitem"],[role="checkbox"],[role="radio"],[role="switch"],[role="combobox"],[role="textbox"],[role="spinbutton"],[role="slider"],[role="tab"],[role="button"],[contenteditable="true"],' + iconSelector + ',' + hotItemSelector;
   const raw = scopeRoots.flatMap((root) => [...(root.matches(controlQuery) ? [root] : []), ...deepQuery(root, controlQuery)]);
   const roots = new Set<Element>();
   const canonicalCache = new WeakMap<Element, Element>();
   for (const element of new Set(raw)) {
     if (closest(element, '[data-discovery-ignore="true"]')) continue;
+    if (closest(element, '.htMenu') && !isHotItem(element)) continue;
     let candidate = canonicalCache.get(element);
     if (!candidate) {
       let component = element.closest(widgetSelector);
@@ -329,6 +374,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
     const role = roleElement?.getAttribute("role") ?? "";
     const nativeType = input instanceof HTMLInputElement ? input.type : "";
     let kind = role || (element instanceof HTMLButtonElement || element.tagName === "SUMMARY" || element.matches(iconSelector) ? "button" : element instanceof HTMLAnchorElement ? "link" : element instanceof HTMLSelectElement ? "select" : nativeType || "text");
+    if (isHotItem(element)) kind = 'menuitem';
     if (element.matches(".el-select,.ivu-select,.md-select,.md-select-input,.md-select-checkbox")) kind = "combobox";
     if (element.matches(".el-cascader,.ivu-cascader")) kind = "cascader";
     if (element.matches(".el-input-number,.ivu-input-number")) kind = "number";
@@ -510,21 +556,27 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
       if (disabled(element) || !!input && disabled(input)) { entry.allowed = false; entry.reason = '入口禁用'; }
       if (element instanceof HTMLButtonElement && element.form && element.type === 'submit' || ['submit', 'reset', 'file'].includes(nativeType)) { entry.allowed = false; entry.reason = '禁止提交表单或文件操作'; }
       if (element instanceof HTMLAnchorElement && (element.hasAttribute('download') || !/^(https?:|#|\/|\.\/|\.\.\/)/i.test(element.getAttribute('href') ?? '#') && element.getAttribute('href')?.includes(':'))) { entry.allowed = false; entry.reason = '不执行下载或脚本协议链接'; }
+      if (isHotItem(element)) { entry.allowed = false; entry.reason = 'Handsontable 菜单仅采集；执行或展开须由明确测试步骤控制'; }
     }
-    const actionRow = action ? closest(element, 'tr,[role="row"]') : null;
+    const menuPanel = isHotItem(element) ? element.closest(hotMenuSelector)! : null;
+    if (menuPanel) notes.push('仅观察已展开菜单；业务命令键、源表格和父菜单归属未知，不能根据文字或位置推断');
+    const actionRow = action && !menuPanel ? closest(element, 'tr,[role="row"]') : null;
     controls.push({ key, context, optionCoverage, category: action ? "action" : "field", kind, label: fieldLabel, locator: hint, currentValue, valueKnown,
       disabled: kind === 'radio-group' ? options.every((option) => option.disabled) : disabled(element) || !!input && disabled(input), readOnly: input?.hasAttribute("readonly") ?? false,
       required: element.getAttribute("aria-required") === "true" || input?.hasAttribute("required") === true,
       multiple, attributes, options, notes, containers: containers(element),
+      ...(menuPanel ? { menu: { component: 'handsontable' as const, panelKind: Array.from(menuPanel.classList).some(c => c.startsWith('htContextMenuSub_')) ? 'submenu' as const : 'context-menu' as const,
+        hasSubmenu: element.classList.contains('htSubmenu'), shortcut: hotMenuContent(element).shortcut ? text(hotMenuContent(element).shortcut) : null,
+        ownerTable: null, parentItem: null } } : {}),
       targets: element.matches(widgetSelector) ? Array.from(element.querySelectorAll('input:not([type="hidden"]),textarea,.ivu-select-selection,.ivu-select-arrow,.ivu-input-icon,.el-select__wrapper')).filter(visible).map(locator).filter(l => l.unique) : [],
       popups: [...popupEvidence].map(([node, basis]) => { const address = locator(node); return { key: identity(address, node), locator: address, basis }; }),
       ...(entry ? { entry } : {}), ...(actionRow ? { row: { locator: locator(actionRow), key: actionRow.getAttribute('data-row-key') } } : {}), dialog: closest(element, dialogSelector) ? locator(closest(element, dialogSelector)!) : null });
   }
   const scoped = (query: string) => [...new Set(scopeRoots.flatMap(root => [...(root.matches(query) ? [root] : []), ...deepQuery(root, query)]))].filter(el => visible(el) && !closest(el, '[data-discovery-ignore="true"]'));
   const dialogs = scoped(dialogSelector).map(el => ({ label: label(el), locator: locator(el), context, containers: containers(el) }));
-  const regionNodes = settings.includeRegions ? scoped('form,.ivu-form,.el-form,[role="region"],section[aria-label],[role="tabpanel"],[role="menu"],[role="listbox"],details,.el-drawer,.ivu-drawer') : [];
+  const regionNodes = settings.includeRegions ? scoped('form,.ivu-form,.el-form,[role="region"],section[aria-label],[role="tabpanel"],[role="menu"],[role="listbox"],details,.el-drawer,.ivu-drawer,' + hotMenuSelector) : [];
   if (regionNodes.length > settings.maxControls) truncated = true;
-  const regions = regionNodes.slice(0, settings.maxControls).map(el => ({ label: text(accessibleName(el) || el.getAttribute('data-testid') || containerKind(el) || el.tagName.toLowerCase()), kind: el.getAttribute('role') ?? (containerKind(el) === 'form' ? 'form' : el.tagName.toLowerCase()), locator: locator(el), context, displayText: settings.includeRegionText === false ? '' : text(visibleText(el)), containers: containers(el) }));
+  const regions = regionNodes.slice(0, settings.maxControls).map(el => ({ label: text(accessibleName(el) || el.getAttribute('data-testid') || containerKind(el) || el.tagName.toLowerCase()), kind: el.matches(hotMenuSelector) ? 'menu' : el.getAttribute('role') ?? (containerKind(el) === 'form' ? 'form' : el.tagName.toLowerCase()), locator: locator(el), context, displayText: settings.includeRegionText === false ? '' : text(visibleText(el)), containers: containers(el) }));
   const frames = scoped("iframe").map(locator);
   const workflowRoots = scoped('[data-workflow="mes"]');
   if (workflowRoots.length > settings.maxControls) { truncated = true; warnings.push('工作流数量超过容器预算'); }
@@ -532,7 +584,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
   const hotRoots = scoped('.handsontable').filter(isHotRoot);
   if (hotRoots.length > settings.maxControls) { truncated = true; warnings.push('Handsontable 数量超过容器预算'); }
   const handsontableTargets = hotRoots.slice(0, settings.maxControls).map(el => ({ key: identity(locator(el), el), locator: locator(el), context, containers: containers(el) }));
-  const cellNodes = scoped('td,th,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]').filter(el => !hotRoot(el));
+  const cellNodes = scoped('td,th,[role="cell"],[role="gridcell"],[role="columnheader"],[role="rowheader"]').filter(el => !hotRoot(el) && !closest(el, '.htMenu'));
   const cells: ObservedCell[] = [];
   if (cellNodes.length > settings.maxCells) { truncated = true; warnings.push(`单元格数量超过上限 ${settings.maxCells}`); }
   for (const cell of cellNodes.slice(0, settings.maxCells)) {
