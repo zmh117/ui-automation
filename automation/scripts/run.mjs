@@ -9,7 +9,7 @@ import { writeSmokeReview } from "../smoke/review.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2), forward = [];
-let slowMo = "0", suite = "full", catalogScope = "all", way = 2, explicitWay = false, runDir, uiStarted = false;
+let slowMo = "0", suite = "full", catalogScope = "all", way = 2, explicitWay = false, casesFile, runDir, uiStarted = false;
 const controller = new AbortController();
 let interrupted;
 const handlers = Object.fromEntries(["SIGINT", "SIGTERM"].map((name) => [name, () => {
@@ -24,7 +24,11 @@ try {
       if (!/^\d+$/.test(slowMo ?? "") || Number(slowMo) > 5000) throw new Error("--slow-mo 须为 0–5000 毫秒");
     } else if (arg === "--suite") {
       suite = args[++i];
-      if (!["full", "smoke"].includes(suite)) throw new Error("--suite 仅支持 full 或 smoke");
+      if (!["full", "smoke", "mes"].includes(suite)) throw new Error("--suite 仅支持 full、smoke 或 mes");
+    } else if (arg === "--cases") {
+      const value = args[++i];
+      if (!value || value.startsWith("--")) throw new Error("--cases 缺少文件路径");
+      casesFile = resolve(value);
     } else if (arg === "--scope") {
       catalogScope = args[++i];
       if (!["all", "discovery"].includes(catalogScope)) throw new Error("--scope 仅支持 all 或 discovery");
@@ -38,15 +42,25 @@ try {
     } else throw new Error(`未知参数：${arg}`);
   }
   if (explicitWay && suite !== "smoke") throw new Error("--way 仅用于冒烟；请使用 npm run ui:smoke:plan 或 npm run test:ui:smoke");
+  if (suite === "mes") {
+    if (!casesFile || !existsSync(casesFile)) throw new Error("MES 套件需要 --cases <存在的用例 JSON 文件>");
+    if (args.includes("--scope") || args.includes("--project")) throw new Error("MES 套件不支持练习站 --scope 或 --project");
+    if (forward.some((arg, i) => arg === "--workers" && forward[i + 1] !== "1")) throw new Error("MES 套件固定单 worker，请使用 --workers 1 或省略");
+  } else if (casesFile) throw new Error("--cases 仅用于 --suite mes");
   const binary = suite === "smoke" ? resolvePictBinary() : null;
   runDir = resolve(root, "output", new Date().toISOString().replace(/[:.]/g, "-") + "-" + randomUUID().slice(0, 8));
   mkdirSync(runDir, { recursive: true });
-  const invocation = { args, baseURL: process.env.PLAYGROUND_URL ?? "http://127.0.0.1:5173", startedAt: new Date().toISOString(), mode: forward.includes("--list") ? "plan" : "execute", suite, catalogScope, ...(suite === "smoke" ? { way } : {}) };
+  const invocation = { args, ...(suite === "mes" ? { casesFile } : { baseURL: process.env.PLAYGROUND_URL ?? "http://127.0.0.1:5173", catalogScope }), startedAt: new Date().toISOString(), mode: forward.includes("--list") ? "plan" : "execute", suite, ...(suite === "smoke" ? { way } : {}) };
   writeFileSync(resolve(runDir, "invocation.json"), JSON.stringify(invocation, null, 2));
   console.log(`本次报告目录：${runDir}`);
   for (const [name, handler] of Object.entries(handlers)) process.on(name, handler);
   const env = { ...process.env, MES_RUN_DIR: runDir, MES_SLOW_MO: slowMo, MES_TEST_SCOPE: catalogScope };
   delete env.MES_SMOKE_SELECTION;
+  delete env.MES_CASES_FILE;
+  if (suite === "mes") {
+    env.MES_CASES_FILE = casesFile;
+    if (process.env.MES_STORAGE_STATE) env.MES_STORAGE_STATE = resolve(process.env.MES_STORAGE_STATE);
+  }
   const cli = resolve(root, "node_modules/@playwright/test/cli.js");
   if (suite === "smoke") {
     const catalogDir = resolve(runDir, "catalog");
@@ -79,7 +93,8 @@ try {
     verifyExecutionSelection(selection, selectedPlan.cases, false);
   }
   uiStarted = !forward.includes("--list");
-  const result = await runProcess(process.execPath, [cli, "test", ...forward], { cwd: root, env, signal: controller.signal, inherit: true, timeoutMs: 0 });
+  const config = suite === "mes" ? ["--config", "mes/playwright.config.ts"] : [];
+  const result = await runProcess(process.execPath, [cli, "test", ...config, ...forward], { cwd: root, env, signal: controller.signal, inherit: true, timeoutMs: 0 });
   process.exitCode = result.code ?? 1;
 } catch (error) {
   process.exitCode = interrupted === "SIGINT" ? 130 : interrupted === "SIGTERM" ? 143 : 1;

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "ebr-weigh-check",
+      "title": "按投料关系打开称量检查节点",
+      "url": "https://mes.example.invalid/替换为已登录可直达的工作流页面",
+      "workflow": { "selector": "[data-testid=\"ebr-pi-workflow-canvas\"]" },
+      "node": {
+        "name": "称量检查",
+        "type": "8",
+        "predecessor": { "name": "投料" },
+        "successor": { "name": "结束" }
+      },
+      "expectedPanel": { "selector": "[data-testid=\"ebr-pi-workflow-config\"]" },
+      "checks": [
+        {
+          "target": { "selector": "[data-testid=\"ebr-pi-workflow-config-form-desc-form-input-desc\"]" },
+          "kind": "value",
+          "expected": "称量检查"
+        }
+      ]
+    }
+  ]
+}

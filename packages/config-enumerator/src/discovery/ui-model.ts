@@ -4,8 +4,8 @@ import { fingerprintReport } from './discover.js';
 import { createDiscoveryDraft } from './model-draft.js';
 import type { DiscoveryReport, DiscoverySnapshot, DocumentContext, DomAddress, LocatorEvidence, ObservedContainer } from './types.js';
 
-export type UiElementKind = 'page' | 'document' | 'form' | 'dialog' | 'table' | 'row' | 'region' | 'panel' | 'field' | 'action' | 'cell' | 'option';
-export type UiRelationKind = 'contains' | 'has-option' | 'has-popup' | 'opens' | 'mirrors';
+export type UiElementKind = 'page' | 'document' | 'form' | 'dialog' | 'table' | 'row' | 'region' | 'panel' | 'field' | 'action' | 'cell' | 'option' | 'workflow' | 'workflow-node';
+export type UiRelationKind = 'contains' | 'has-option' | 'has-popup' | 'opens' | 'mirrors' | 'connects-to';
 export interface UiObservation {
   snapshotId: string; source: string; label: string; state: JsonValue;
 }
@@ -17,7 +17,7 @@ export interface UiElement {
 }
 export interface UiRelationEvidence {
   snapshotId: string;
-  basis: 'document' | 'dom-containment' | 'observed-options' | 'aria' | 'explicit-step' | 'test-id-contract' | 'verified-transition' | 'handsontable-dom';
+  basis: 'document' | 'dom-containment' | 'observed-options' | 'aria' | 'explicit-step' | 'test-id-contract' | 'verified-transition' | 'handsontable-dom' | 'workflow-dom';
   detail?: string;
 }
 export interface UiRelation {
@@ -67,7 +67,7 @@ export async function createUiElementModel(report: DiscoveryReport): Promise<UiE
     return node;
   };
   const relate = (from: UiElement, to: UiElement, kind: UiRelationKind, evidence: UiRelationEvidence) => {
-    if (from.id === to.id) return;
+    if (from.id === to.id && kind !== 'connects-to') return;
     const key = canonical([from.id, to.id, kind]);
     let edge = edges.get(key);
     if (!edge) { edge = { from: from.id, to: to.id, kind, evidence: [] }; edges.set(key, edge); }
@@ -169,6 +169,25 @@ export async function createUiElementModel(report: DiscoveryReport): Promise<UiE
       const node = element(s, dialog.context, dialog.locator, `dialogs[${i}]`, 'dialog', `dialogs[${i}]`, dialog.label);
       attach(node, s, dialog.context, dialog.containers);
     }
+    for (const [i, workflow] of (s.workflows ?? []).entries()) {
+      const source = `workflows[${i}]`, reading = workflow.reading;
+      const graph = element(s, workflow.context, workflow.locator, workflow.key, 'workflow', source, '工作流', { status: reading.status, issues: reading.issues });
+      attach(graph, s, workflow.context, workflow.containers);
+      if (reading.status !== 'observed') incomplete = true;
+      const members = new Map<string, UiElement[]>();
+      for (const [ni, node] of reading.nodes.entries()) {
+        // A recreated workflow may reuse the same integer ID for a different node.
+        const member = add(canonical({ snapshot: s.id, graph: graph.id, nodeObservation: ni }), 'workflow-node', s, workflow.context, null,
+          'snapshot-only', `${source}.nodes[${ni}]`, node.name, json(node));
+        members.set(node.id, [...(members.get(node.id) ?? []), member]);
+        relate(graph, member, 'contains', { snapshotId: s.id, basis: 'workflow-dom' });
+      }
+      for (const edge of reading.edges) {
+        const from = members.get(edge.from), to = members.get(edge.to);
+        if (from?.length === 1 && to?.length === 1) relate(from[0]!, to[0]!, 'connects-to', { snapshotId: s.id, basis: 'workflow-dom' });
+      }
+      limitations.add('工作流节点 ID 仅属于当前工作流快照；执行时必须重新采集并按业务条件唯一匹配，连线不等同于已确认业务断言。');
+    }
     for (const [i, region] of (s.regions ?? []).entries()) {
       const kind = ['listbox', 'menu'].includes(region.kind) ? 'panel' : ['form', 'dialog', 'table', 'row', 'panel'].includes(region.kind) ? region.kind as UiElementKind : 'region';
       const node = element(s, region.context, region.locator, `regions[${i}]`, kind, `regions[${i}]`, region.label);
@@ -267,7 +286,7 @@ export function renderUiElementModel(model: UiElementModel): string {
     const node = nodes.get(id)!;
     return clean(`${node.observations[0]?.label || node.kinds.join('/')} · ${node.locator?.selector || node.id}`);
   };
-  const kinds: Record<UiRelationKind, string> = { contains: '包含', 'has-option': '具有选项', 'has-popup': '关联浮层', opens: '已观察打开', mirrors: '固定区域副本' };
+  const kinds: Record<UiRelationKind, string> = { contains: '包含', 'has-option': '具有选项', 'has-popup': '关联浮层', opens: '已观察打开', mirrors: '固定区域副本', 'connects-to': '工作流后继' };
   return ['# UI 元素关系模型', '', `状态：${model.status}；元素：${model.elements.length}；关系：${model.relations.length}；关联配置字段：${model.configurationFields.length}。`,
     '', '身份限定到完整页面 URL、Frame、Shadow 和可靠定位；逐状态值及禁用属性见 ui-model.json 的 observations。未定位项仅作单次观察。模型不授权点击，也不推断业务依赖。',
     '', '## 关系', '', '| 来源 | 联系 | 目标 | 快照与依据 |', '|---|---|---|---|',

@@ -526,6 +526,9 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
   if (regionNodes.length > settings.maxControls) truncated = true;
   const regions = regionNodes.slice(0, settings.maxControls).map(el => ({ label: text(accessibleName(el) || el.getAttribute('data-testid') || containerKind(el) || el.tagName.toLowerCase()), kind: el.getAttribute('role') ?? (containerKind(el) === 'form' ? 'form' : el.tagName.toLowerCase()), locator: locator(el), context, displayText: settings.includeRegionText === false ? '' : text(visibleText(el)), containers: containers(el) }));
   const frames = scoped("iframe").map(locator);
+  const workflowRoots = scoped('[data-workflow="mes"]');
+  if (workflowRoots.length > settings.maxControls) { truncated = true; warnings.push('工作流数量超过容器预算'); }
+  const workflowTargets = workflowRoots.slice(0, settings.maxControls).map(el => ({ key: identity(locator(el), el), locator: locator(el), context, containers: containers(el) }));
   const hotRoots = scoped('.handsontable').filter(isHotRoot);
   if (hotRoots.length > settings.maxControls) { truncated = true; warnings.push('Handsontable 数量超过容器预算'); }
   const handsontableTargets = hotRoots.slice(0, settings.maxControls).map(el => ({ key: identity(locator(el), el), locator: locator(el), context, containers: containers(el) }));
@@ -566,7 +569,7 @@ function browserDOM(request: ScanOptions | { resolve: DomAddress } | { visibilit
       displayText: text(fullText), displayTruncated, businessValue, valueKnown,
       valueSource: valueKnown ? "explicit-dom-json" : "unknown", notes, containers: containers(cell) });
   }
-  return { url: location.href, controls, cells, dialogs, frames, regions, handsontableTargets, pageLabels: [text(document.title), ...scoped('h1,h2,[role="heading"]').map(el => text(visibleText(el)))], warnings: [...new Set(warnings)], truncated, unresolvedControls: controls.filter(c => !c.locator.unique).length };
+  return { url: location.href, controls, cells, dialogs, frames, regions, handsontableTargets, workflowTargets, pageLabels: [text(document.title), ...scoped('h1,h2,[role="heading"]').map(el => text(visibleText(el)))], warnings: [...new Set(warnings)], truncated, unresolvedControls: controls.filter(c => !c.locator.unique).length };
 }
 
 // 类型化入口共享同一个函数体，Playwright 序列化后也不依赖模块闭包。

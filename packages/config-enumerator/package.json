@@ -30,6 +30,7 @@
     "DISCOVERY.md",
     "UI-MODEL.md",
     "HANDSONTABLE.md",
+    "WORKFLOW.md",
     "VERIFICATION.md"
   ],
   "engines": {
@@ -43,7 +44,8 @@
     "review": "node bin/review.mjs",
     "test:discovery": "npm run build && node --test test/discovery/*.test.mjs",
     "prepack": "npm run build",
-    "test:handsontable": "npm run build && node --test test/discovery/handsontable.test.mjs"
+    "test:handsontable": "npm run build && node --test test/discovery/handsontable.test.mjs",
+    "test:workflow": "npm run build && node --test test/discovery/workflow.test.mjs"
   },
   "peerDependencies": {
     "playwright": ">=1.63.0 <2"

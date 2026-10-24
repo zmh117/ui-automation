@@ -1,5 +1,7 @@
 # UI 元素关系模型
 
+工作流另有 `workflow.json`，模型包含 `workflow`、`workflow-node` 和 `connects-to`。节点 ID 限当前工作流快照；执行时按本轮业务名称、类型及前后关系解析，详见 [工作流节点定位](WORKFLOW.md)。
+
 发现命令现在自动导出 `ui-model.json` 和 `ui-model.md`。模型把逐次扫描中的控件、容器和打开路径连起来，支持查询某条记录有哪些操作、字段属于哪个表单、下拉使用哪个浮层、入口实际打开过哪个界面。它独立于需要人工确认的 `draft-model.json` 配置模型。
 
 ```mermaid

@@ -6,6 +6,9 @@
   "scripts": {
     "test:ui": "node scripts/run.mjs",
     "plan": "node scripts/run.mjs --list",
+    "mes:plan": "node scripts/run.mjs --suite mes --list",
+    "test:ui:mes": "node scripts/run.mjs --suite mes",
+    "test:mes-adapter": "playwright test --config mes/verification.config.ts",
     "report": "playwright show-report",
     "report:zh": "node scripts/report-zh.mjs",
     "test:report": "node --test reporting/*.test.mjs",

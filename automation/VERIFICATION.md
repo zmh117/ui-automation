@@ -72,3 +72,14 @@ npm run test:ui -- --headed --slow-mo 300 --workers 1 --grep 'behavior.table.add
 先前的 `output/` 目录包含适配调试、筛选回归和生命周期验证，不能把这些筛选结果相加冒充完整执行。此文只以上述完整运行目录作为全量验收依据。
 
 本结果证明的是本地练习站及其执行器，不代表真实 MES、数据库、Redis、WMS 或设备链路已经验收。
+
+## 2026-10-24：MES 工作流入口同步验证
+
+新增 `--suite mes --cases <文件>`，详细使用方式见 [MES.md](MES.md)。本轮验证的是执行器接入，不是实际 EBR/JTH 后端联测。
+
+- 7 项本地隔离回归通过：节点 ID 重建、前后关系消歧、失败不点击/不重试、短名重复、Frame/Shadow、独立预期与面板范围，以及正式 runner 的计划/成功/错误断言/无效用例分支。
+- 正式 runner 的故意错误预期返回非零退出码，保留当前 JSON、失败现场、截图和 trace；该失败是负向测试预期，不属于业务验收。
+- 类型检查、枚举器 31 项、原报告 15 项、冒烟 9 项测试及严格 OpenSpec 校验通过。原全量计划仍为 2665 项，发现页计划仍为 212 项；本轮未重新执行练习站全量浏览器用例。
+- 验证期间记录本次 runner 的子进程树，正常关闭后核验同 PID/命令残留为 0；未操作用户 Chrome。
+
+本地证据：[回归日志](../output/mes-adapter-20261024/adapter-tests.log)、[进程归属与退出](../output/mes-adapter-20261024/processes.json)。输出为本地忽略文件；换机器可用 `npm --prefix automation run test:mes-adapter` 重跑。真实地址、目标配方及独立预期需按环境填写，当前没有真实环境通过结论。

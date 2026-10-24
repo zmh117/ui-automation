@@ -1,5 +1,6 @@
 import type { ConfigurationModel, JsonValue, Rule } from "../types.js";
 import type { HandsontableTarget, HandsontableObservation } from './handsontable.js';
+import type { WorkflowTarget, WorkflowObservation } from './workflow.js';
 
 /** selector 为稳定 CSS 或 anchor= 语义关系，仅匹配自身及祖先可见的节点。shadowPath 逐层列出开放宿主。 */
 export interface DomAddress { selector: string; shadowPath?: string[] }
@@ -103,6 +104,8 @@ export interface PageObservation {
   /** 扫描入口交给专用读取器；目标不代表单元格已读取。 */
   handsontableTargets?: HandsontableTarget[];
   handsontables?: HandsontableObservation[];
+  workflowTargets?: WorkflowTarget[];
+  workflows?: WorkflowObservation[];
   regions?: { label: string; kind: string; locator: LocatorEvidence; context: DocumentContext; displayText: string; containers?: ObservedContainer[] }[];
 }
 export interface DiscoveryStep {

@@ -3,3 +3,5 @@ output/
 test-results/
 playwright-report/
 .tools/
+.auth/
+mes/*.local.json

@@ -2,6 +2,7 @@ import type { ElementHandle, Frame, Page } from "playwright";
 import { scanDocument } from "./scan.js";
 import { findElement } from "./dom.js";
 import { readHandsontable } from './handsontable.js';
+import { readWorkflow } from './workflow.js';
 import type { DialogAssociation, DiscoveryScene, DiscoverySnapshot, DomAddress, PopupLink, ScanOptions, ConfirmationEntry, ExplorationOptions } from "./types.js";
 export const discoveryDefaults = { maxSnapshots: 60, maxControls: 300, maxOptions: 100, maxTextLength: 500, timeoutMs: 5000, maxCells: 300, maxFrames: 20, maxFrameDepth: 4, maxShadowDepth: 8 };
 export type DiscoveryLimits = typeof discoveryDefaults;
@@ -44,6 +45,21 @@ export async function captureSnapshot(page: Page, frame: Frame, scene: Discovery
         }
       }
       snapshot.regions!.push(...(observed.regions ?? []));
+      for (const target of observed.workflowTargets ?? []) {
+        snapshot.workflows ??= [];
+        try {
+          if (signal?.aborted) throw new Error('发现已取消');
+          if (!target.locator.unique) throw new Error('工作流缺少唯一可见入口');
+          const maxNodes = Math.max(0, limits.maxControls - snapshot.workflows.reduce((n, w) => n + w.reading.nodes.length, 0));
+          const reading = await readWorkflow(current, target.locator, { maxNodes, maxTextLength: limits.maxTextLength });
+          snapshot.workflows.push({ ...target, reading });
+          snapshot.truncated ||= reading.status !== 'observed';
+        } catch (error) {
+          const reason = String(error).slice(0, 600);
+          snapshot.workflows.push({ ...target, reading: { schemaVersion: 1, artifactType: 'workflow-observation', url: current.url(), rootTestId: null, status: 'incomplete', nodes: [], edges: [], issues: [reason] } });
+          snapshot.warnings.push(reason); snapshot.truncated = true;
+        }
+      }
       snapshot.pageLabels!.push(...(observed.pageLabels ?? []));
       snapshot.warnings.push(...observed.warnings.map(w => `${JSON.stringify(path)}：${w}`));
       snapshot.truncated ||= observed.truncated;

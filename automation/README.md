@@ -1,5 +1,7 @@
 # 七页 UI 自动化执行
 
+真实 MES 工作流已接入独立的 `--suite mes` 入口，支持当前 JSON 业务定位及独立面板断言。运行方式见 [MES 工作流自动化](MES.md)；下文仍为练习站七页的有限模型测试。
+
 按原六页的 [覆盖规格](../openspec/changes/execute-playground-ui-configurations/coverage-review.md) 和新增 [发现验证页规格](../openspec/changes/execute-discovery-validation-page/coverage-review.md) 生成候选，再由 Playwright Test 实际操作本项目 Vue 页面。模型版本 `2026-10-11.1`。使用本机 Chrome，每条用例使用新上下文，不使用日常浏览器的登录状态或保存数据。
 
 ## 安装与运行

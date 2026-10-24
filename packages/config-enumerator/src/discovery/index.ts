@@ -7,3 +7,5 @@ export { readHandsontable, readHandsontableDOM, requireHandsontableCell, createH
 export type { HandsontableCell, HandsontableTarget, HandsontableReading, HandsontableObservation, HandsontableReadOptions } from './handsontable.js';
 export { createUiElementModel, findUiRelations, renderUiElementModel } from './ui-model.js';
 export type { UiElementModel, UiElement, UiObservation, UiRelation, UiRelationEvidence, UiElementKind, UiRelationKind } from './ui-model.js';
+export { readWorkflow, readWorkflowDOM, requireWorkflowNode, validateWorkflowNodeQuery, resolveWorkflowNode, clickWorkflowNode, createWorkflowReport } from './workflow.js';
+export type { WorkflowNode, WorkflowReading, WorkflowObservation, WorkflowTarget, WorkflowReadOptions, WorkflowNodeCriteria, WorkflowNodeQuery } from './workflow.js';

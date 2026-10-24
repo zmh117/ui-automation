@@ -4,6 +4,8 @@
   "scripts": {
     "test:ui": "node automation/scripts/run.mjs",
     "ui:plan": "node automation/scripts/run.mjs --list",
+    "ui:mes:plan": "node automation/scripts/run.mjs --suite mes --list",
+    "test:ui:mes": "node automation/scripts/run.mjs --suite mes",
     "ui:report:zh": "node automation/scripts/report-zh.mjs",
     "pict:install": "node automation/scripts/install-pict.mjs",
     "ui:smoke:plan": "node automation/scripts/run.mjs --suite smoke --list",
