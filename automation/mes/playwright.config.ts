@@ -5,6 +5,7 @@ const out = process.env.MES_RUN_DIR ?? resolve('output', `mes-direct-${Date.now(
 export default defineConfig({
   testDir: '.', testMatch: 'workflow.spec.ts', fullyParallel: false, workers: 1, retries: 0,
   timeout: 120000,
+  preserveOutput: 'always',
   outputDir: resolve(out, 'artifacts'),
   reporter: [
     ['./reporter.ts'], ['dot'],
@@ -15,7 +16,7 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 }, locale: 'zh-CN', timezoneId: 'Asia/Shanghai',
     storageState: process.env.MES_STORAGE_STATE,
     actionTimeout: 5000, navigationTimeout: 15000,
-    screenshot: 'only-on-failure', trace: 'retain-on-failure',
+    screenshot: 'on', trace: 'on',
     launchOptions: { slowMo: Number(process.env.MES_SLOW_MO ?? 0) },
   },
 });

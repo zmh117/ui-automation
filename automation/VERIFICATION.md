@@ -83,3 +83,18 @@ npm run test:ui -- --headed --slow-mo 300 --workers 1 --grep 'behavior.table.add
 - 验证期间记录本次 runner 的子进程树，正常关闭后核验同 PID/命令残留为 0；未操作用户 Chrome。
 
 本地证据：[回归日志](../output/mes-adapter-20261024/adapter-tests.log)、[进程归属与退出](../output/mes-adapter-20261024/processes.json)。输出为本地忽略文件；换机器可用 `npm --prefix automation run test:mes-adapter` 重跑。真实地址、目标配方及独立预期需按环境填写，当前没有真实环境通过结论。
+
+## 2026-10-24：MES 需求关联与每步执行证据
+
+实现仅修改自动化项目。用例 schemaVersion 2 强制需求编号/版本/正文、步骤编号及断言需求引用。标准 executeMesWorkflowCase 逐步记录导航、Frame、入口点击、节点解析/点击、面板等待和独立断言，包含相关目标的前后状态、实际路径、预期/实际、动作尝试/完成标记及未执行步骤。结果同时输出 execution.json、results.jsonl 和每步落盘记录，成功/失败均保留 trace 和收尾截图。
+
+验证证据在仓库根 `output/mes-execution-20261024/verification.json`：
+
+- TypeScript 类型检查通过；`openspec validate add-mes-execution-evidence --strict` 及 `git diff --check` 通过。
+- 适配器首轮 10/10 通过；附件错误处理等后续修正后定向回归 4/4（含 1 个新增场景）通过，最后补验单选内部值未知 1/1 通过，覆盖 11 个不同场景。
+- 正式 runner 实际运行计划、成功、独立预期失败与非法用例，验证需求映射、逐步状态、JSON 附件路径及成功/失败 trace、截图文件；失败仍为非零退出码，动作不重复。入口计划列出 1 条示例而不打开页面。
+- 导航失败、同名歧义、Frame/Shadow、关闭页面、附件写入失败、敏感值脱敏、单选内部值未知和原文空格均有验证。中断通过未结束的落盘记录夹具验证 reporter 收敛及未知结束时间，不宣称做过操作系统强杀测试。
+- 原有中文报告 15/15 与冒烟选例 9/9 通过。
+- 本次三个浏览器验证批次跟踪的进程均退出，详见各 `*-processes.json`；没有关闭用户浏览器。
+
+这些证据来自隔离本地固定数据页面。未启动真实 MES 后端、未验收实际 EBR/JTH 业务链路、数据库或设备；未调用外部 Agent。前端没有修改，旧用例须按新 schema 补充真实需求，不自动迁移或伪造编号；历史报告和其他未提交工作保留。

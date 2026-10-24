@@ -1,9 +1,16 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "cases": [
     {
       "id": "ebr-weigh-check",
       "title": "按投料关系打开称量检查节点",
+      "requirements": [
+        {
+          "id": "REQ-EXAMPLE-WORKFLOW-001",
+          "version": "示例-v1",
+          "text": "示例需求，运行前须替换并确认：在当前配方中打开投料之后、结束之前的称量检查节点，配置面板中的节点描述应为称量检查。"
+        }
+      ],
       "url": "https://mes.example.invalid/替换为已登录可直达的工作流页面",
       "workflow": { "selector": "[data-testid=\"ebr-pi-workflow-canvas\"]" },
       "node": {
@@ -15,6 +22,9 @@
       "expectedPanel": { "selector": "[data-testid=\"ebr-pi-workflow-config\"]" },
       "checks": [
         {
+          "id": "check-description",
+          "title": "核对节点描述",
+          "requirementIds": ["REQ-EXAMPLE-WORKFLOW-001"],
           "target": { "selector": "[data-testid=\"ebr-pi-workflow-config-form-desc-form-input-desc\"]" },
           "kind": "value",
           "expected": "称量检查"
